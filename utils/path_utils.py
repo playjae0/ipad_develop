@@ -39,3 +39,21 @@ def list_subdirectories(root_path: str | Path) -> list[str]:
 
     subdirs = [item.name for item in root.iterdir() if item.is_dir()]
     return sorted(subdirs)
+
+
+def collect_files_with_extensions(directory: str | Path, extensions: tuple[str, ...]) -> list[Path]:
+    """Collect files in a directory filtered by allowed extensions.
+
+    Returns an empty list when directory does not exist.
+    """
+    target = Path(directory).expanduser().resolve()
+    if not target.exists() or not target.is_dir():
+        return []
+
+    normalized = {ext.lower().lstrip(".") for ext in extensions}
+    files = [
+        file_path
+        for file_path in target.iterdir()
+        if file_path.is_file() and file_path.suffix.lower().lstrip(".") in normalized
+    ]
+    return sorted(files, key=lambda x: x.name)

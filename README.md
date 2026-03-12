@@ -1,6 +1,6 @@
 # Fresh Start
 
-이 저장소는 Streamlit 기반 이미지 불량 라벨링 앱의 초기 버전입니다.
+이 저장소는 초기화되었으며, Streamlit 기반 이미지 불량 라벨링 앱을 새로 시작할 준비가 완료되었습니다.
 
 ## Runtime Compatibility Check
 

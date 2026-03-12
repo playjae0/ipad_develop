@@ -1,7 +1,8 @@
-"""Upload page UI for Step 3.
+"""Upload page UI for Step 4.
 
 This page handles:
 - drag-and-drop upload
+- folder selection upload (period/line two-level)
 - upload validation
 - filename parsing
 - image_map construction
@@ -13,11 +14,13 @@ This page handles:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
-from config import ALLOWED_EXTENSIONS
+from config import ALLOWED_EXTENSIONS, IMAGE_ROOT_PATH
+from src.atis_loader import merge_atis_to_master
 from src.constants import COL_CELL_ID, PAGE_LABELING, POSITION_COLUMNS
 from src.dataframe_builder import build_master_dataframe
 from src.image_registry import build_image_map
@@ -34,6 +37,7 @@ from src.validation import (
     validate_file_count,
     validate_file_extensions,
 )
+from utils.path_utils import collect_files_with_extensions, list_subdirectories
 
 
 def render_upload_page() -> None:
@@ -43,17 +47,61 @@ def render_upload_page() -> None:
     st.title("이미지 업로드")
     st.caption("이미지를 업로드한 뒤, cell_id 기준 master dataframe을 생성합니다.")
 
-    uploaded_files = st.file_uploader(
-        "이미지 파일을 업로드하세요 (jpg, jpeg, png)",
-        type=list(ALLOWED_EXTENSIONS),
-        accept_multiple_files=True,
+    upload_source = st.radio(
+        "업로드 방식 선택",
+        options=["드래그 업로드", "폴더 선택 업로드"],
+        horizontal=True,
     )
 
-    if not uploaded_files:
-        st.info("업로드할 이미지를 선택해주세요.")
+    if upload_source == "드래그 업로드":
+        uploaded_files = st.file_uploader(
+            "이미지 파일을 업로드하세요 (jpg, jpeg, png)",
+            type=list(ALLOWED_EXTENSIONS),
+            accept_multiple_files=True,
+        )
+
+        if not uploaded_files:
+            st.info("업로드할 이미지를 선택해주세요.")
+            return
+
+        _render_validation_result(uploaded_files)
         return
 
-    _render_validation_result(uploaded_files)
+    folder_files = _render_folder_selector()
+    if folder_files is None:
+        return
+
+    _render_validation_result(folder_files)
+
+
+def _render_folder_selector() -> list[Path] | None:
+    """Render two-level folder selector and return collected image file paths."""
+    st.subheader("폴더 선택 업로드")
+    st.caption(f"루트 폴더: {IMAGE_ROOT_PATH}")
+
+    periods = list_subdirectories(IMAGE_ROOT_PATH)
+    if not periods:
+        st.warning("루트 폴더에 기간 하위 폴더가 없습니다.")
+        return None
+
+    selected_period = st.selectbox("1단계: 기간", options=periods)
+    period_path = IMAGE_ROOT_PATH / selected_period
+
+    lines = list_subdirectories(period_path)
+    if not lines:
+        st.warning("선택한 기간 폴더에 라인 하위 폴더가 없습니다.")
+        return None
+
+    selected_line = st.selectbox("2단계: 라인", options=lines)
+    line_path = period_path / selected_line
+
+    collected_files = collect_files_with_extensions(line_path, ALLOWED_EXTENSIONS)
+    if not collected_files:
+        st.warning("선택한 라인 폴더에 업로드 가능한 이미지 파일이 없습니다.")
+        return None
+
+    st.success(f"선택된 폴더에서 {len(collected_files)}개 이미지를 찾았습니다.")
+    return collected_files
 
 
 def _render_validation_result(uploaded_files: list[Any]) -> None:
@@ -81,6 +129,9 @@ def _render_validation_result(uploaded_files: list[Any]) -> None:
     if master_df.empty:
         st.error("유효한 파일이 없어 master dataframe을 생성할 수 없습니다.")
         return
+
+    master_df, atis_message = merge_atis_to_master(master_df)
+    st.info(atis_message)
 
     _render_missing_counts(master_df)
 
