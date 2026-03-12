@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from config import DEFAULT_SAVE_ROOT
-from src.constants import COL_CELL_ID, PAGE_UPLOAD
+from src.constants import COL_CELL_ID, KEY_SELECTED_FOLDER_INFO, PAGE_UPLOAD
 from src.save_manager import build_csv_export_payload, save_defect_images
 from src.state_manager import (
     get_current_cell_index,
@@ -43,6 +43,8 @@ def render_labeling_page() -> None:
             st.rerun()
         return
 
+    _render_sidebar_source_info()
+
     sorted_df = master_df.sort_values(COL_CELL_ID).reset_index(drop=True)
     current_index = _safe_index(get_current_cell_index(), len(sorted_df))
 
@@ -59,24 +61,20 @@ def render_labeling_page() -> None:
         set_master_dataframe(sorted_df)
         touch_label_sync_token()
 
-
     _render_save_section(sorted_df, image_map)
 
+
+def _render_sidebar_source_info() -> None:
+    """Show selected source folder information in sidebar when available."""
+    folder_info = str(st.session_state.get(KEY_SELECTED_FOLDER_INFO, "") or "").strip()
+    if folder_info:
+        st.sidebar.caption(f"선택 폴더(상위/하위): {folder_info}")
 
 
 def _render_save_section(df: pd.DataFrame, image_map: dict[str, dict[str, object]]) -> None:
     """Render CSV and image save controls."""
     st.divider()
     st.subheader("저장")
-
-    csv_base_name = st.text_input("CSV 파일명", value="labeling_result")
-    csv_filename, csv_bytes = build_csv_export_payload(df, csv_base_name)
-    st.download_button(
-        "CSV 저장",
-        data=csv_bytes,
-        file_name=csv_filename,
-        mime="text/csv",
-    )
 
     session_name = st.text_input("이미지 저장 세션 폴더명", value="session_01")
     if st.button("이미지 저장"):
@@ -90,6 +88,17 @@ def _render_save_section(df: pd.DataFrame, image_map: dict[str, dict[str, object
             f"이미지 저장 완료 - saved: {result['saved']}, skipped: {result['skipped']}"
         )
 
+    csv_base_name = st.text_input("CSV 파일명", value="labeling_result")
+    csv_filename, csv_bytes = build_csv_export_payload(df, csv_base_name)
+    st.download_button(
+        "CSV 저장",
+        data=csv_bytes,
+        file_name=csv_filename,
+        mime="text/csv",
+    )
+
+    st.caption("CSV 추출 대상 데이터프레임")
+    st.dataframe(df, use_container_width=True)
 
 
 def _render_navigation_buttons(current_index: int, total_count: int) -> None:

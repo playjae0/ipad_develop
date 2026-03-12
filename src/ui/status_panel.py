@@ -18,6 +18,8 @@ def render_status_panel(df: pd.DataFrame, current_index: int) -> None:
     progress_pct = (labeled_slots / total_slots * 100.0) if total_slots > 0 else 0.0
 
     cols = st.columns(3)
-    cols[0].metric("전체 cell 수", total_cells)
-    cols[1].metric("현재 index", f"{current_display} / {total_cells}")
-    cols[2].metric("라벨링 진행", f"{labeled_slots}/{total_slots} ({progress_pct:.1f}%)")
+    cols[0].caption(f"전체 cell 수: {total_cells}")
+    cols[1].caption(f"현재 index: {current_display}/{total_cells}")
+    cols[2].caption(f"라벨링 진행: {labeled_slots}/{total_slots} ({progress_pct:.1f}%)")
+
+    st.progress(progress_pct / 100.0 if total_slots > 0 else 0.0)

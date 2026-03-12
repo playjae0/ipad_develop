@@ -8,10 +8,9 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from src.ui.defect_controls import render_defect_selector
+from src.ui.defect_controls import render_defect_buttons
 
 
-POSITION_LAYOUT: list[str] = ["CA(TOP)", "CA(BOT)", "AN(TOP)", "AN(BOT)"]
 POSITION_TO_DEFECT_COLUMN = {
     "CA(TOP)": "Defect_CA(TOP)",
     "CA(BOT)": "Defect_CA(BOT)",
@@ -36,13 +35,17 @@ def render_image_grid(
     st.subheader(f"Cell: {cell_id}")
     changed = False
 
-    top_cols = st.columns(2)
-    changed = _render_single_position(top_cols[0], df, image_map, row_index, "CA(TOP)", cell_id) or changed
-    changed = _render_single_position(top_cols[1], df, image_map, row_index, "CA(BOT)", cell_id) or changed
+    st.markdown("### CA Set")
+    ca_cols = st.columns([1, 1], gap="large")
+    changed = _render_single_position(ca_cols[0], df, image_map, row_index, "CA(TOP)", cell_id) or changed
+    changed = _render_single_position(ca_cols[1], df, image_map, row_index, "CA(BOT)", cell_id) or changed
 
-    bottom_cols = st.columns(2)
-    changed = _render_single_position(bottom_cols[0], df, image_map, row_index, "AN(TOP)", cell_id) or changed
-    changed = _render_single_position(bottom_cols[1], df, image_map, row_index, "AN(BOT)", cell_id) or changed
+    st.divider()
+
+    st.markdown("### AN Set")
+    an_cols = st.columns([1, 1], gap="large")
+    changed = _render_single_position(an_cols[0], df, image_map, row_index, "AN(TOP)", cell_id) or changed
+    changed = _render_single_position(an_cols[1], df, image_map, row_index, "AN(BOT)", cell_id) or changed
 
     return changed
 
@@ -55,7 +58,7 @@ def _render_single_position(
     position: str,
     cell_id: str,
 ) -> bool:
-    """Render one position panel including image and defect selector."""
+    """Render one position panel including image and defect buttons."""
     defect_col = POSITION_TO_DEFECT_COLUMN[position]
     changed = False
 
@@ -71,15 +74,14 @@ def _render_single_position(
             except Exception as error:  # pragma: no cover - UI safety fallback
                 st.warning(f"이미지 표시 실패: {error}")
 
-        selected = render_defect_selector(
+        selected, value_changed = render_defect_buttons(
             df=df,
             row_index=row_index,
             defect_column=defect_col,
-            widget_key=f"defect_{cell_id}_{position}",
+            widget_key_prefix=f"defect_{cell_id}_{position}",
         )
 
-        existing = str(df.at[row_index, defect_col] or "")
-        if selected != existing:
+        if value_changed:
             df.at[row_index, defect_col] = selected
             changed = True
 

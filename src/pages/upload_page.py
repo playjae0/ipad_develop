@@ -21,7 +21,7 @@ import streamlit as st
 
 from config import ALLOWED_EXTENSIONS, IMAGE_ROOT_PATH
 from src.atis_loader import merge_atis_to_master
-from src.constants import COL_CELL_ID, PAGE_LABELING, POSITION_COLUMNS
+from src.constants import COL_CELL_ID, KEY_SELECTED_FOLDER_INFO, PAGE_LABELING, POSITION_COLUMNS
 from src.dataframe_builder import build_master_dataframe
 from src.image_registry import build_image_map
 from src.state_manager import (
@@ -64,17 +64,19 @@ def render_upload_page() -> None:
             st.info("업로드할 이미지를 선택해주세요.")
             return
 
+        st.session_state[KEY_SELECTED_FOLDER_INFO] = ""
         _render_validation_result(uploaded_files)
         return
 
-    folder_files = _render_folder_selector()
+    folder_files, folder_info = _render_folder_selector()
     if folder_files is None:
         return
 
+    st.session_state[KEY_SELECTED_FOLDER_INFO] = folder_info
     _render_validation_result(folder_files)
 
 
-def _render_folder_selector() -> list[Path] | None:
+def _render_folder_selector() -> tuple[list[Path] | None, str]:
     """Render two-level folder selector and return collected image file paths."""
     st.subheader("폴더 선택 업로드")
     st.caption(f"루트 폴더: {IMAGE_ROOT_PATH}")
@@ -82,7 +84,7 @@ def _render_folder_selector() -> list[Path] | None:
     periods = list_subdirectories(IMAGE_ROOT_PATH)
     if not periods:
         st.warning("루트 폴더에 기간 하위 폴더가 없습니다.")
-        return None
+        return None, ""
 
     selected_period = st.selectbox("1단계: 기간", options=periods)
     period_path = IMAGE_ROOT_PATH / selected_period
@@ -90,7 +92,7 @@ def _render_folder_selector() -> list[Path] | None:
     lines = list_subdirectories(period_path)
     if not lines:
         st.warning("선택한 기간 폴더에 라인 하위 폴더가 없습니다.")
-        return None
+        return None, ""
 
     selected_line = st.selectbox("2단계: 라인", options=lines)
     line_path = period_path / selected_line
@@ -98,10 +100,11 @@ def _render_folder_selector() -> list[Path] | None:
     collected_files = collect_files_with_extensions(line_path, ALLOWED_EXTENSIONS)
     if not collected_files:
         st.warning("선택한 라인 폴더에 업로드 가능한 이미지 파일이 없습니다.")
-        return None
+        return None, ""
 
     st.success(f"선택된 폴더에서 {len(collected_files)}개 이미지를 찾았습니다.")
-    return collected_files
+    folder_info = f"{selected_period} / {selected_line}"
+    return collected_files, folder_info
 
 
 def _render_validation_result(uploaded_files: list[Any]) -> None:

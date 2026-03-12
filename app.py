@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+st.set_page_config(layout="wide", page_title="Defect Labeling")
+
 from src.constants import PAGE_LABELING, PAGE_UPLOAD
 from src.pages.labeling_page import render_labeling_page
 from src.pages.upload_page import render_upload_page
