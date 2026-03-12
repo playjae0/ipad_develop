@@ -1,2 +1,3 @@
-# ipad_develop
-to develop data analysis platform through ipad codex
+# Fresh Start
+
+이 저장소는 초기화되었으며, 새 프로젝트 내용을 추가할 준비가 완료되었습니다.
