@@ -15,12 +15,8 @@ def render_defect_buttons(
     defect_column: str,
     widget_key_prefix: str,
 ) -> tuple[str, bool]:
-    """Render per-defect buttons and return (selected_value, changed)."""
+    """Render per-defect buttons + manual input and return (value, changed)."""
     current_value = str(df.at[row_index, defect_column] or "")
-    options = ["", *DEFAULT_DEFECT_LIST]
-
-    if current_value not in options:
-        options.append(current_value)
 
     st.caption(f"현재 라벨: {current_value if current_value else '-'}")
 
@@ -38,5 +34,15 @@ def render_defect_buttons(
             if cols[idx].button(label, key=key, use_container_width=True):
                 selected_value = value
                 changed = selected_value != current_value
+
+    manual_value = st.text_input(
+        "수동 라벨 입력",
+        value="",
+        key=f"{widget_key_prefix}_manual_text",
+        placeholder="예: CustomDefect",
+    ).strip()
+    if st.button("수동 라벨 적용", key=f"{widget_key_prefix}_manual_apply", use_container_width=True):
+        selected_value = manual_value
+        changed = selected_value != current_value
 
     return selected_value, changed

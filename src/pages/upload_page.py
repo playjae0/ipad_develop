@@ -37,7 +37,8 @@ from src.validation import (
     validate_file_count,
     validate_file_extensions,
 )
-from utils.path_utils import collect_files_with_extensions, list_subdirectories
+from utils.naming_utils import sanitize_token
+from utils.path_utils import collect_files_with_extensions, ensure_directory, list_subdirectories
 
 
 def render_upload_page() -> None:
@@ -65,6 +66,7 @@ def render_upload_page() -> None:
             return
 
         st.session_state[KEY_SELECTED_FOLDER_INFO] = ""
+        _render_uploaded_files_save_section(uploaded_files)
         _render_validation_result(uploaded_files)
         return
 
@@ -74,6 +76,35 @@ def render_upload_page() -> None:
 
     st.session_state[KEY_SELECTED_FOLDER_INFO] = folder_info
     _render_validation_result(folder_files)
+
+
+def _render_uploaded_files_save_section(uploaded_files: list[Any]) -> None:
+    """Optionally save drag-uploaded original files under IMAGE_ROOT_PATH."""
+    st.subheader("업로드 원본 저장")
+    st.caption(f"기본 저장 경로: {IMAGE_ROOT_PATH}")
+
+    subfolder_name = st.text_input(
+        "하위 저장 폴더명 (비우면 루트에 저장)",
+        value="",
+        help="입력 시 IMAGE_ROOT_PATH 하위에 폴더를 생성하여 저장합니다.",
+    )
+
+    if st.button("업로드한 원본 이미지 저장"):
+        try:
+            save_root = ensure_directory(IMAGE_ROOT_PATH)
+            if subfolder_name.strip():
+                safe_subfolder = sanitize_token(subfolder_name.strip(), fallback="uploaded")
+                save_root = ensure_directory(save_root / safe_subfolder)
+
+            saved_count = 0
+            for uploaded_file in uploaded_files:
+                output_path = save_root / Path(str(uploaded_file.name)).name
+                output_path.write_bytes(uploaded_file.getvalue())
+                saved_count += 1
+
+            st.success(f"원본 이미지 저장 완료: {saved_count}개 ({save_root})")
+        except Exception as error:  # pragma: no cover - UI safety fallback
+            st.error(f"원본 저장 중 오류가 발생했습니다: {error}")
 
 
 def _render_folder_selector() -> tuple[list[Path] | None, str]:
