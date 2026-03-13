@@ -36,6 +36,14 @@ DEFAULT_SAVE_ROOT: Path = Path("./outputs")
 
 # ATIS mapping placeholder for future merge rules
 # key: target output column name, value: source ATIS column name
+# Example:
+# ATIS_COLUMN_MAPPING = {
+#     "cell_id": "Cell ID",
+#     "ATIS_CA(TOP)": "ENG Top Cathode",
+#     "ATIS_CA(BOT)": "ENG Bottom Cathode",
+#     "ATIS_AN(TOP)": "ENG Top Anode",
+#     "ATIS_AN(BOT)": "ENG Bottom Anode",
+# }
 ATIS_COLUMN_MAPPING: dict[str, str] = {}
 
 # Timestamp formatting
