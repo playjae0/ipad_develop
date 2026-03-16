@@ -34,6 +34,11 @@ IMAGE_ROOT_PATH: Path = Path("./data/images")
 ATIS_FILE_PATH: Path = Path("./data/atis/atis.xlsx")
 DEFAULT_SAVE_ROOT: Path = Path("./outputs")
 
+# Path aliases/extensions for upload/export controls
+IMAGE_ROOT_DIR: Path = IMAGE_ROOT_PATH
+CSV_OUTPUT_ROOT_DIR: Path = Path("./output/result")
+IMAGE_EXPORT_ROOT_DIR: Path = DEFAULT_SAVE_ROOT
+
 # ATIS mapping placeholder for future merge rules
 # key: target output column name, value: source ATIS column name
 # Example:
@@ -48,3 +53,10 @@ ATIS_COLUMN_MAPPING: dict[str, str] = {}
 
 # Timestamp formatting
 TIMESTAMP_FORMAT: str = "%Y%m%d_%H%M%S"
+
+# Authentication settings
+AUTH_DB_PATH: Path = Path("./data/auth/auth.db")
+ADMIN_EMPLOYEE_ID: str = "ADMIN000000000001"
+ADMIN_FULL_NAME: str = "System Admin"
+ADMIN_EMAIL: str = "admin@example.com"
+ADMIN_PASSWORD: str = "ChangeMe!123"

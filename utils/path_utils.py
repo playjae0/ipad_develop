@@ -41,6 +41,19 @@ def list_subdirectories(root_path: str | Path) -> list[str]:
     return sorted(subdirs)
 
 
+def list_subdirectories_relative(root_path: str | Path) -> list[str]:
+    """Return sorted relative subdirectory paths under root_path."""
+    root = Path(root_path).expanduser().resolve()
+    if not root.exists() or not root.is_dir():
+        return []
+
+    relative_dirs: list[str] = []
+    for directory in root.rglob("*"):
+        if directory.is_dir():
+            relative_dirs.append(directory.relative_to(root).as_posix())
+    return sorted(relative_dirs)
+
+
 def collect_files_with_extensions(directory: str | Path, extensions: tuple[str, ...]) -> list[Path]:
     """Collect files in a directory filtered by allowed extensions.
 

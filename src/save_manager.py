@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,153 @@ def build_csv_export_payload(df: pd.DataFrame, base_filename: str) -> tuple[str,
     timestamp = get_timestamp(TIMESTAMP_FORMAT)
     output_name = f"{safe_base}_{timestamp}.csv"
     return output_name, dataframe_to_csv_bytes(df)
+
+
+def build_csv_filename(
+    base_filename: str,
+    *,
+    custom_suffix: str = "",
+    timestamp_format: str = "%m%d_%H%M",
+) -> str:
+    """Build CSV filename with base + time + optional suffix."""
+    safe_base = sanitize_token(base_filename or "labeling_result", fallback="labeling_result")
+    timestamp = get_timestamp(timestamp_format)
+    safe_suffix = sanitize_token(custom_suffix, fallback="") if custom_suffix.strip() else ""
+    suffix_part = f"_{safe_suffix}" if safe_suffix else ""
+    return f"{safe_base}_{timestamp}{suffix_part}.csv"
+
+
+def save_csv_to_path(df: pd.DataFrame, output_dir: str | Path, filename: str) -> Path:
+    """Persist CSV to output_dir/filename and return the saved path."""
+    target_dir = ensure_directory(output_dir)
+    target_path = target_dir / Path(filename).name
+    target_path.write_bytes(dataframe_to_csv_bytes(df))
+    return target_path
+
+
+VERSION_PATTERN = re.compile(r"_ver(\d+)\.(\d+)\.csv$", re.IGNORECASE)
+
+
+def parse_version_from_filename(filename: str) -> tuple[int, int] | None:
+    """Parse version tuple (major, minor) from file name suffix `_verX.Y.csv`."""
+    match = VERSION_PATTERN.search(filename)
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def find_latest_csv_version(result_folder: str | Path) -> tuple[int, int]:
+    """Find highest CSV version in folder; default to (0, 0) when empty."""
+    folder = ensure_directory(result_folder)
+    versions: list[tuple[int, int]] = []
+    for file_path in folder.glob("*.csv"):
+        parsed = parse_version_from_filename(file_path.name)
+        if parsed is not None:
+            versions.append(parsed)
+
+    if not versions:
+        return 0, 0
+    return max(versions)
+
+
+def build_next_version(latest: tuple[int, int]) -> tuple[int, int]:
+    """Return next version where minor rolls over after 9."""
+    major, minor = latest
+    if minor < 9:
+        return major, minor + 1
+    return major + 1, 0
+
+
+def build_next_version_filename(line: str, period: str, employee_id: str, version: tuple[int, int]) -> str:
+    """Build `{line}_{period}_{employee_id}_verX.Y.csv` file name."""
+    safe_line = sanitize_token(line, fallback="line")
+    safe_period = sanitize_token(period, fallback="period")
+    safe_employee = sanitize_token(employee_id, fallback="unknown")
+    major, minor = version
+    return f"{safe_line}_{safe_period}_{safe_employee}_ver{major}.{minor}.csv"
+
+
+def ensure_result_folder_from_selected_subpath(csv_root: str | Path, selected_subpath: str) -> Path:
+    """Ensure CSV output folder for selected `line/period` subpath."""
+    clean_subpath = selected_subpath.strip().strip("/")
+    return ensure_directory(Path(csv_root) / clean_subpath)
+
+
+def export_csv_without_filling_ok(df: pd.DataFrame, output_dir: str | Path, filename: str) -> Path:
+    """Export CSV as-is without auto-filling empty defect values."""
+    return save_csv_to_path(df, output_dir, filename)
+
+
+def find_latest_csv_file(result_folder: str | Path) -> Path | None:
+    """Return latest versioned CSV path in folder, if present."""
+    folder = ensure_directory(result_folder)
+    candidates: list[tuple[tuple[int, int], Path]] = []
+    for file_path in folder.glob("*.csv"):
+        parsed = parse_version_from_filename(file_path.name)
+        if parsed is not None:
+            candidates.append((parsed, file_path))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0])
+    return candidates[-1][1]
+
+
+def extract_employee_and_version_from_filename(filename: str) -> tuple[str, str] | None:
+    """Extract `(employee_id, vX.Y)` from `{line}_{period}_{employee}_verX.Y.csv`."""
+    parsed = parse_version_from_filename(filename)
+    if parsed is None:
+        return None
+
+    stem = Path(filename).stem
+    stem_no_ver = re.sub(r"_ver\d+\.\d+$", "", stem, flags=re.IGNORECASE)
+    parts = stem_no_ver.split("_")
+    if len(parts) < 3:
+        return None
+
+    employee_id = parts[-1]
+    major, minor = parsed
+    return employee_id, f"v{major}.{minor}"
+
+
+def load_previous_defect_values(csv_path: str | Path) -> pd.DataFrame:
+    """Load previous CSV and return defect columns + cell_id only."""
+    loaded_df = pd.read_csv(csv_path)
+    required_columns = [
+        COL_CELL_ID,
+        COL_DEFECT_CA_TOP,
+        COL_DEFECT_CA_BOT,
+        COL_DEFECT_AN_TOP,
+        COL_DEFECT_AN_BOT,
+    ]
+    available_columns = [column for column in required_columns if column in loaded_df.columns]
+    return loaded_df[available_columns].copy()
+
+
+def apply_loaded_defect_values(current_df: pd.DataFrame, loaded_df: pd.DataFrame) -> pd.DataFrame:
+    """Overwrite only defect columns on current dataframe by `cell_id` match."""
+    if COL_CELL_ID not in loaded_df.columns:
+        return current_df
+
+    defect_columns = [
+        COL_DEFECT_CA_TOP,
+        COL_DEFECT_CA_BOT,
+        COL_DEFECT_AN_TOP,
+        COL_DEFECT_AN_BOT,
+    ]
+    target_columns = [column for column in defect_columns if column in loaded_df.columns]
+    if not target_columns:
+        return current_df
+
+    merged = current_df.copy()
+    indexed_loaded = loaded_df.set_index(COL_CELL_ID)
+    for idx, row in merged.iterrows():
+        cell_id = row[COL_CELL_ID]
+        if cell_id not in indexed_loaded.index:
+            continue
+        for column in target_columns:
+            merged.at[idx, column] = indexed_loaded.at[cell_id, column]
+    return merged
 
 
 def save_defect_images(

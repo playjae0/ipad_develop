@@ -31,6 +31,8 @@ KEY_CURRENT_CELL_INDEX = "current_cell_index"
 KEY_UPLOAD_COMPLETED = "upload_completed"
 KEY_LABEL_SYNC_TOKEN = "label_sync_token"
 KEY_SELECTED_FOLDER_INFO = "selected_folder_info"
+KEY_UPLOAD_SOURCE_TYPE = "upload_source_type"
+KEY_SELECTED_IMAGE_SUBPATH = "selected_image_subpath"
 
 SESSION_DEFAULTS = {
     KEY_MASTER_DF: None,
@@ -39,9 +41,12 @@ SESSION_DEFAULTS = {
     KEY_UPLOAD_COMPLETED: False,
     KEY_LABEL_SYNC_TOKEN: 0,
     KEY_SELECTED_FOLDER_INFO: "",
+    KEY_UPLOAD_SOURCE_TYPE: "drag_upload",
+    KEY_SELECTED_IMAGE_SUBPATH: None,
 }
 
 # Page names (v1, two-page structure)
 PAGE_UPLOAD = "upload"
 PAGE_LABELING = "labeling"
-PAGES = [PAGE_UPLOAD, PAGE_LABELING]
+PAGE_ADMIN = "admin"
+PAGES = [PAGE_UPLOAD, PAGE_LABELING, PAGE_ADMIN]
