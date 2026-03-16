@@ -14,6 +14,8 @@ from src.lock.dataset_lock_manager import acquire_lock, release_lock
 from src.logging.activity_logger import log_labeling_activity
 from src.constants import (
     COL_CELL_ID,
+    DEFECT_COLUMNS,
+    POSITION_COLUMNS,
     KEY_SELECTED_FOLDER_INFO,
     KEY_SELECTED_IMAGE_SUBPATH,
     KEY_UPLOAD_SOURCE_TYPE,
@@ -85,6 +87,7 @@ def render_labeling_page() -> None:
         current_index = selected_index
 
     render_status_panel(sorted_df, current_index)
+    _render_cell_progress_summary(sorted_df)
     _render_navigation_buttons(current_index, len(sorted_df))
 
     changed = render_image_grid(df=sorted_df, image_map=image_map, row_index=current_index)
@@ -253,6 +256,40 @@ def _safe_index(index: int, length: int) -> int:
     if length <= 0:
         return 0
     return min(max(index, 0), length - 1)
+
+
+def _render_cell_progress_summary(df: pd.DataFrame) -> None:
+    """Render cell-based progress summary aligned with upload-page logic."""
+    total_cells = len(df)
+    if total_cells <= 0:
+        st.caption("전체 cell: 0")
+        st.caption("처리된 cell: 0")
+        st.caption("남은 cell: 0")
+        st.caption("진행률: 0%")
+        st.caption("총 이미지 수: 0")
+        return
+
+    defect_columns = [column for column in DEFECT_COLUMNS if column in df.columns]
+    if defect_columns:
+        defect_values = df[defect_columns].fillna("").astype(str).apply(lambda col: col.str.strip())
+        processed_cells = int((defect_values != "").any(axis=1).sum())
+    else:
+        processed_cells = 0
+
+    remaining_cells = total_cells - processed_cells
+    progress_percent = int(round((processed_cells / total_cells) * 100))
+
+    image_columns = [column for column in POSITION_COLUMNS if column in df.columns]
+    total_images = 0
+    if image_columns:
+        numeric_images = df[image_columns].apply(pd.to_numeric, errors="coerce").fillna(0)
+        total_images = int(numeric_images.sum().sum())
+
+    st.caption(f"전체 cell: {total_cells}")
+    st.caption(f"처리된 cell: {processed_cells}")
+    st.caption(f"남은 cell: {remaining_cells}")
+    st.caption(f"진행률: {progress_percent}%")
+    st.caption(f"총 이미지 수: {total_images}")
 
 
 def _ensure_dataset_lock() -> bool:

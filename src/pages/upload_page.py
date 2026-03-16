@@ -241,7 +241,7 @@ def _render_csv_status_overview_table() -> None:
             )
             lock_employee = lock_map.get(dataset_key)
             if progress_text != "-" and lock_employee:
-                progress_text = f"{progress_text} ({lock_employee} 작업중)"
+                progress_text = f"{progress_text} - {lock_employee} 작업중"
             row[period] = progress_text
         rows.append(row)
 
@@ -281,12 +281,18 @@ def _calculate_progress_text_for_dataset(*, csv_root: str, line: str, period: st
         return "-"
 
     defect_values = df[defect_columns].fillna("").astype(str).apply(lambda col: col.str.strip())
-    labeled_cells = int((defect_values != "").any(axis=1).sum())
-    progress_percent = int(round((labeled_cells / total_cells) * 100))
+    processed_cells = int((defect_values != "").any(axis=1).sum())
+    progress_percent = int(round((processed_cells / total_cells) * 100))
+
+    image_columns = [column for column in POSITION_COLUMNS if column in df.columns]
+    total_images = 0
+    if image_columns:
+        numeric_images = df[image_columns].apply(pd.to_numeric, errors="coerce").fillna(0)
+        total_images = int(numeric_images.sum().sum())
 
     if progress_percent >= 100:
-        return "100% 완료"
-    return f"{progress_percent}%"
+        return f"100% 완료 ({processed_cells}/{total_cells} cells, {total_images} imgs)"
+    return f"{progress_percent}% ({processed_cells}/{total_cells} cells, {total_images} imgs)"
 
 
 def _release_lock_if_any() -> None:
