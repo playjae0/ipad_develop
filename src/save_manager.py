@@ -17,11 +17,7 @@ from src.constants import (
     COL_DEFECT_CA_TOP,
 )
 from utils.io_utils import dataframe_to_csv_bytes, get_timestamp
-from utils.naming_utils import (
-    build_labeled_image_filename,
-    infer_extension_from_path,
-    sanitize_token,
-)
+from utils.naming_utils import sanitize_token
 from utils.path_utils import ensure_directory
 
 POSITION_TO_DEFECT_COLUMN: dict[str, str] = {
@@ -196,15 +192,20 @@ def save_defect_images(
     df: pd.DataFrame,
     image_map: dict[str, dict[str, Any]],
     save_root: str | Path,
-    session_name: str,
+    employee_id: str,
+    custom_folder: str | None = None,
 ) -> dict[str, int]:
     """Save non-empty and non-ok defect images into structured folders.
 
     Save structure:
-        [session_folder]/[position]/[defect]/[position]_[defect]_[cell_id].[ext]
+        [custom_folder/][position]/[defect]/[position]_[defect]_[cell_id]_[employee_id].jpg
     """
-    safe_session = sanitize_token(session_name or "session", fallback="session")
-    session_root = ensure_directory(Path(save_root) / safe_session)
+    export_root = Path(save_root)
+    if custom_folder and custom_folder.strip():
+        export_root = export_root / sanitize_token(custom_folder, fallback="custom")
+    export_root = ensure_directory(export_root)
+
+    safe_employee = sanitize_token(employee_id or "unknown", fallback="unknown")
 
     saved_count = 0
     skipped_count = 0
@@ -227,10 +228,12 @@ def save_defect_images(
                 continue
 
             try:
-                extension = _infer_extension(image_ref)
-                file_name = build_labeled_image_filename(position, defect_raw, cell_id, extension)
+                safe_position = sanitize_token(position)
+                safe_defect = sanitize_token(defect_raw)
+                safe_cell_id = sanitize_token(cell_id)
+                file_name = f"{safe_position}_{safe_defect}_{safe_cell_id}_{safe_employee}.jpg"
                 defect_dir = ensure_directory(
-                    session_root / sanitize_token(position) / sanitize_token(defect_raw)
+                    export_root / safe_position / safe_defect
                 )
                 output_path = defect_dir / file_name
                 output_path.write_bytes(_read_image_bytes(image_ref))
@@ -239,17 +242,6 @@ def save_defect_images(
                 skipped_count += 1
 
     return {"saved": saved_count, "skipped": skipped_count}
-
-
-def _infer_extension(image_ref: Any) -> str:
-    """Infer extension from path-like or uploaded-file-like reference."""
-    if isinstance(image_ref, (str, Path)):
-        return infer_extension_from_path(str(image_ref))
-
-    if hasattr(image_ref, "name"):
-        return infer_extension_from_path(str(image_ref.name))
-
-    raise ValueError("Cannot infer image extension from image reference.")
 
 
 def _read_image_bytes(image_ref: Any) -> bytes:

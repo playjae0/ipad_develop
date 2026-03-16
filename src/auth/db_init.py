@@ -58,6 +58,31 @@ def initialize_auth_db(
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS labeling_activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id TEXT NOT NULL,
+                line TEXT NOT NULL,
+                period TEXT NOT NULL,
+                dataset_path TEXT NOT NULL,
+                labeled_cells INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                FOREIGN KEY (employee_id) REFERENCES users(employee_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dataset_lock (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dataset_key TEXT NOT NULL UNIQUE,
+                employee_id TEXT NOT NULL,
+                locked_at TEXT NOT NULL,
+                FOREIGN KEY (employee_id) REFERENCES users(employee_id)
+            )
+            """
+        )
         conn.commit()
 
     admin_exists = find_user_by_employee_id(db_file, admin_employee_id)

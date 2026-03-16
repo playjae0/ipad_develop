@@ -22,9 +22,12 @@ import streamlit as st
 
 from config import ALLOWED_EXTENSIONS, CSV_OUTPUT_ROOT_DIR, IMAGE_ROOT_DIR, IMAGE_ROOT_PATH
 from config import AUTH_DB_PATH
+from src.lock.dataset_lock_manager import release_lock
 from src.atis_loader import merge_atis_to_master
 from src.auth.user_store import log_dataset_access
-from src.save_manager import extract_employee_and_version_from_filename, find_latest_csv_file
+from src.constants import DEFECT_COLUMNS
+from src.lock.dataset_lock_manager import get_active_locks
+from src.save_manager import find_latest_csv_file
 from src.constants import (
     COL_CELL_ID,
     KEY_SELECTED_FOLDER_INFO,
@@ -48,7 +51,6 @@ from src.validation import (
     validate_file_count,
     validate_file_extensions,
 )
-from utils.naming_utils import sanitize_token
 from utils.path_utils import collect_files_with_extensions, ensure_directory, list_subdirectories
 
 
@@ -59,6 +61,7 @@ EXPECTED_PERIODS = ["1주차", "2주차", "3주차", "4주차"]
 def render_upload_page() -> None:
     """Render upload page and process uploaded images."""
     initialize_session_state()
+    _release_lock_if_any()
 
     st.title("이미지 업로드")
     st.caption("이미지를 업로드한 뒤, cell_id 기준 master dataframe을 생성합니다.")
@@ -103,18 +106,13 @@ def _render_uploaded_files_save_section(uploaded_files: list[Any]) -> None:
     st.subheader("업로드 원본 저장")
     st.caption(f"기본 저장 경로: {IMAGE_ROOT_PATH}")
 
-    subfolder_name = st.text_input(
-        "하위 저장 폴더명 (비우면 루트에 저장)",
-        value="",
-        help="입력 시 IMAGE_ROOT_PATH 하위에 폴더를 생성하여 저장합니다.",
-    )
+    selected_line = st.selectbox("저장 Line", options=EXPECTED_LINES, key="raw_save_line")
+    selected_period = st.selectbox("저장 Period", options=EXPECTED_PERIODS, key="raw_save_period")
+    st.caption(f"저장 대상: {IMAGE_ROOT_PATH / selected_line / selected_period}")
 
     if st.button("업로드한 원본 이미지 저장"):
         try:
-            save_root = ensure_directory(IMAGE_ROOT_PATH)
-            if subfolder_name.strip():
-                safe_subfolder = sanitize_token(subfolder_name.strip(), fallback="uploaded")
-                save_root = ensure_directory(save_root / safe_subfolder)
+            save_root = ensure_directory(IMAGE_ROOT_PATH / selected_line / selected_period)
 
             saved_count = 0
             for uploaded_file in uploaded_files:
@@ -227,26 +225,77 @@ def _render_missing_counts(master_df: Any) -> None:
 
 
 def _render_csv_status_overview_table() -> None:
-    """Render latest CSV save status by expected line/period grid."""
-    st.subheader("CSV 저장 현황")
+    """Render CSV-only dataset progress board."""
+    st.subheader("데이터셋 진행 현황")
 
+    lock_map = _get_active_lock_map(str(AUTH_DB_PATH))
     rows: list[dict[str, str]] = []
     for line in EXPECTED_LINES:
-        row: dict[str, str] = {"line": line}
+        row: dict[str, str] = {"라인": line}
         for period in EXPECTED_PERIODS:
-            latest_file = find_latest_csv_file(Path(CSV_OUTPUT_ROOT_DIR) / line / period)
-            if latest_file is None:
-                row[period] = ""
-                continue
-
-            parsed = extract_employee_and_version_from_filename(latest_file.name)
-            if parsed is None:
-                row[period] = ""
-                continue
-
-            employee_id, version = parsed
-            row[period] = f"{employee_id} / {version}"
+            dataset_key = f"{line}/{period}"
+            progress_text = _calculate_progress_text_for_dataset(
+                csv_root=str(CSV_OUTPUT_ROOT_DIR),
+                line=line,
+                period=period,
+            )
+            lock_employee = lock_map.get(dataset_key)
+            if progress_text != "-" and lock_employee:
+                progress_text = f"{progress_text} ({lock_employee} 작업중)"
+            row[period] = progress_text
         rows.append(row)
 
-    overview_df = pd.DataFrame(rows).set_index("line")
-    st.dataframe(overview_df, use_container_width=True)
+    progress_df = pd.DataFrame(rows).set_index("라인")
+    st.dataframe(progress_df, use_container_width=True)
+
+
+@st.cache_data(ttl=60)
+def _get_active_lock_map(db_path: str) -> dict[str, str]:
+    """Return dataset_key -> employee_id map for active locks."""
+    locks = get_active_locks(db_path)
+    return {
+        str(lock.get("dataset_key", "")): str(lock.get("employee_id", ""))
+        for lock in locks
+        if lock.get("dataset_key") and lock.get("employee_id")
+    }
+
+
+@st.cache_data(ttl=60)
+def _calculate_progress_text_for_dataset(*, csv_root: str, line: str, period: str) -> str:
+    """Calculate dataset progress text using latest CSV only."""
+    latest_csv = find_latest_csv_file(Path(csv_root) / line / period)
+    if latest_csv is None:
+        return "-"
+
+    try:
+        df = pd.read_csv(latest_csv)
+    except Exception:
+        return "-"
+
+    total_cells = len(df)
+    if total_cells <= 0:
+        return "-"
+
+    defect_columns = [column for column in DEFECT_COLUMNS if column in df.columns]
+    if not defect_columns:
+        return "-"
+
+    defect_values = df[defect_columns].fillna("").astype(str).apply(lambda col: col.str.strip())
+    labeled_cells = int((defect_values != "").any(axis=1).sum())
+    progress_percent = int(round((labeled_cells / total_cells) * 100))
+
+    if progress_percent >= 100:
+        return "100% 완료"
+    return f"{progress_percent}%"
+
+
+def _release_lock_if_any() -> None:
+    """Best-effort lock release when user leaves labeling to upload."""
+    selected_subpath = st.session_state.get(KEY_SELECTED_IMAGE_SUBPATH)
+    employee_id = str(st.session_state.get("auth_employee_id", "")).strip()
+    if isinstance(selected_subpath, str) and selected_subpath.strip() and employee_id:
+        release_lock(
+            db_path=AUTH_DB_PATH,
+            dataset_key=selected_subpath,
+            employee_id=employee_id,
+        )

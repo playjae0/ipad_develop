@@ -9,6 +9,9 @@ import pandas as pd
 import streamlit as st
 
 from config import CSV_OUTPUT_ROOT_DIR, IMAGE_EXPORT_ROOT_DIR
+from config import AUTH_DB_PATH
+from src.lock.dataset_lock_manager import acquire_lock, release_lock
+from src.logging.activity_logger import log_labeling_activity
 from src.constants import (
     COL_CELL_ID,
     KEY_SELECTED_FOLDER_INFO,
@@ -65,6 +68,9 @@ def render_labeling_page() -> None:
         if st.button("업로드 페이지로 이동"):
             st.session_state["current_page"] = PAGE_UPLOAD
             st.rerun()
+        return
+
+    if not _ensure_dataset_lock():
         return
 
     _render_sidebar_source_info()
@@ -148,16 +154,21 @@ def _render_save_section(df: pd.DataFrame, image_map: dict[str, dict[str, object
         custom_image_root = st.text_input("이미지 저장 상위 폴더명", value="")
 
     image_save_root = IMAGE_EXPORT_ROOT_DIR
-    if separate_image_path and custom_image_root.strip():
-        image_save_root = Path(IMAGE_EXPORT_ROOT_DIR) / sanitize_token(custom_image_root.strip(), fallback="custom")
+    custom_folder = sanitize_token(custom_image_root.strip(), fallback="custom") if custom_image_root.strip() else None
 
-    session_name = st.text_input("이미지 저장 세션 폴더명", value="session_01")
+    st.caption("각 이미지는 '이미지 측정 위치 / 불량 Type' 폴더로 저장됨. ex) CA(TOP)/융착/{이미지}")
+    if st.button("라벨링 종료"):
+        _release_current_dataset_lock()
+        st.session_state["current_page"] = PAGE_UPLOAD
+        st.rerun()
+
     if st.button("이미지 저장"):
         result = save_defect_images(
             df=df,
             image_map=image_map,
             save_root=image_save_root,
-            session_name=session_name,
+            employee_id=employee_id,
+            custom_folder=custom_folder if separate_image_path else None,
         )
         st.success(
             f"이미지 저장 완료 - saved: {result['saved']}, skipped: {result['skipped']}"
@@ -172,6 +183,15 @@ def _render_save_section(df: pd.DataFrame, image_map: dict[str, dict[str, object
             st.error("CSV 저장 실패: employee_id 형식이 올바르지 않습니다. (예: so12345)")
             return
         saved_path = export_csv_without_filling_ok(df, csv_output_dir, csv_filename)
+        selected_subpath = st.session_state.get(KEY_SELECTED_IMAGE_SUBPATH)
+        if isinstance(selected_subpath, str) and selected_subpath.strip():
+            log_labeling_activity(
+                db_path=AUTH_DB_PATH,
+                employee_id=employee_id,
+                selected_subpath=selected_subpath,
+                df=df,
+            )
+            _release_current_dataset_lock()
         st.success(f"CSV 저장 완료: {saved_path}")
 
     st.download_button(
@@ -233,3 +253,40 @@ def _safe_index(index: int, length: int) -> int:
     if length <= 0:
         return 0
     return min(max(index, 0), length - 1)
+
+
+def _ensure_dataset_lock() -> bool:
+    """Ensure current dataset lock is acquired for this user."""
+    selected_subpath = st.session_state.get(KEY_SELECTED_IMAGE_SUBPATH)
+    employee_id = str(st.session_state.get("auth_employee_id", "")).strip()
+    if not isinstance(selected_subpath, str) or not selected_subpath.strip() or not employee_id:
+        return True
+
+    acquired, current = acquire_lock(
+        db_path=AUTH_DB_PATH,
+        dataset_key=selected_subpath,
+        employee_id=employee_id,
+    )
+    if acquired:
+        return True
+
+    lock_owner = str((current or {}).get("employee_id", "알 수 없음"))
+    lock_time = str((current or {}).get("locked_at", ""))
+    st.error("현재 이 데이터셋은 다른 사용자가 작업 중입니다.")
+    st.warning(f"현재 {lock_owner} 사용자가 작업 중입니다.\n잠금 시간: {lock_time}")
+    if st.button("업로드 페이지로 이동"):
+        st.session_state["current_page"] = PAGE_UPLOAD
+        st.rerun()
+    return False
+
+
+def _release_current_dataset_lock() -> None:
+    """Release current dataset lock for logged-in user."""
+    selected_subpath = st.session_state.get(KEY_SELECTED_IMAGE_SUBPATH)
+    employee_id = str(st.session_state.get("auth_employee_id", "")).strip()
+    if isinstance(selected_subpath, str) and selected_subpath.strip() and employee_id:
+        release_lock(
+            db_path=AUTH_DB_PATH,
+            dataset_key=selected_subpath,
+            employee_id=employee_id,
+        )
