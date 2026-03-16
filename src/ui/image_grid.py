@@ -63,7 +63,9 @@ def _render_single_position(
     changed = False
 
     with container:
-        st.markdown(f"**{position}**")
+        atis_value = _get_atis_value(df, row_index, position)
+        title = f"{position} - {atis_value}" if atis_value else position
+        st.markdown(f"**{title}**")
         image_ref = image_map.get(cell_id, {}).get(position)
 
         if image_ref is None:
@@ -87,6 +89,18 @@ def _render_single_position(
 
     return changed
 
+
+
+def _get_atis_value(df: pd.DataFrame, row_index: int, position: str) -> str:
+    """Return ATIS value text for a position when ATIS column exists."""
+    atis_col = f"ATIS_{position}"
+    if atis_col not in df.columns:
+        return ""
+
+    value = str(df.at[row_index, atis_col] or "").strip()
+    if not value or value.lower() == "nan":
+        return ""
+    return value
 
 def _to_image_source(image_ref: Any) -> Any:
     """Normalize image source for streamlit display."""

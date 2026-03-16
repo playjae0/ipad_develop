@@ -10,7 +10,7 @@ from typing import Any
 from config import POSITIONS
 
 
-TAB_CELL_ID_PATTERN = re.compile(r"TAB_(\d{16})")
+TAB_CELL_ID_PATTERN = re.compile(r"TAB_([A-Za-z0-9]{16})")
 CRACK_POSITION_PATTERN = re.compile(r"CRACK\s+(.{7})")
 
 
@@ -32,7 +32,7 @@ def parse_filename(file_reference: Any) -> FileParseResult:
     """Parse cell_id and position from image file name.
 
     Rules:
-    - cell_id: first 16-digit value after `TAB_`
+    - cell_id: first 16-char alphanumeric value after `TAB_`
     - position: first 7 chars after `CRACK` + spaces
 
     Args:
@@ -49,7 +49,7 @@ def parse_filename(file_reference: Any) -> FileParseResult:
             filename=filename,
             cell_id=None,
             position=None,
-            error="Failed to parse cell_id: missing `TAB_` + 16 digits pattern.",
+            error="Failed to parse cell_id: missing `TAB_` + 16 alphanumeric pattern.",
         )
     cell_id = cell_match.group(1)
 

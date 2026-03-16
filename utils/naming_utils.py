@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 
-_SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9()_-]+")
+_SANITIZE_PATTERN = re.compile(r"[^\w가-힣()_-]+", re.UNICODE)
 
 
 def sanitize_token(raw: str, *, fallback: str = "unknown") -> str:
