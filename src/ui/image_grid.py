@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from config import ATIS_TOP_LEVELS
 from src.ui.defect_controls import render_defect_selector
 
 
@@ -103,8 +104,8 @@ def _get_atis_value(df: pd.DataFrame, row_index: int, position: str) -> str:
 
     if "/" in raw_text:
         _, new_value = _split_atis_override(raw_text)
-        return new_value
-    return raw_text
+        return _normalize_top_level(new_value)
+    return _normalize_top_level(raw_text)
 
 
 def _get_raw_atis_text(df: pd.DataFrame, row_index: int, position: str) -> str:
@@ -122,13 +123,20 @@ def _get_raw_atis_text(df: pd.DataFrame, row_index: int, position: str) -> str:
 def _split_atis_override(text: str) -> tuple[str, str]:
     """Split `Original/New` formatted ATIS text."""
     if "/" not in text:
-        normalized = text.strip() or "OK"
+        normalized = _normalize_top_level(text.strip() or "OK")
         return normalized, normalized
 
     original, new = text.split("/", 1)
-    original_text = original.strip() or "OK"
-    new_text = new.strip() or original_text
+    original_text = _normalize_top_level(original.strip() or "OK")
+    new_text = _normalize_top_level(new.strip() or original_text)
     return original_text, new_text
+
+
+def _normalize_top_level(value: str) -> str:
+    """Normalize top-level to configured categories; unknown values become OK."""
+    if value in ATIS_TOP_LEVELS:
+        return value
+    return "OK"
 
 
 def _apply_atis_override(df: pd.DataFrame, row_index: int, atis_col: str, selected_top: str) -> None:

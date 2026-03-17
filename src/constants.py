@@ -33,6 +33,11 @@ KEY_LABEL_SYNC_TOKEN = "label_sync_token"
 KEY_SELECTED_FOLDER_INFO = "selected_folder_info"
 KEY_UPLOAD_SOURCE_TYPE = "upload_source_type"
 KEY_SELECTED_IMAGE_SUBPATH = "selected_image_subpath"
+KEY_IMAGE_LOADING_MODE = "image_loading_mode"
+KEY_RESOLVED_LOADING_STRATEGY = "resolved_loading_strategy"
+KEY_EAGER_THRESHOLD = "eager_threshold"
+KEY_PRELOAD_FORWARD_COUNT = "preload_forward_count"
+KEY_PRELOAD_BACKWARD_COUNT = "preload_backward_count"
 
 SESSION_DEFAULTS = {
     KEY_MASTER_DF: None,
@@ -43,6 +48,11 @@ SESSION_DEFAULTS = {
     KEY_SELECTED_FOLDER_INFO: "",
     KEY_UPLOAD_SOURCE_TYPE: "drag_upload",
     KEY_SELECTED_IMAGE_SUBPATH: None,
+    KEY_IMAGE_LOADING_MODE: "auto",
+    KEY_RESOLVED_LOADING_STRATEGY: "auto",
+    KEY_EAGER_THRESHOLD: 200,
+    KEY_PRELOAD_FORWARD_COUNT: 2,
+    KEY_PRELOAD_BACKWARD_COUNT: 1,
 }
 
 # Page names (v1, two-page structure)

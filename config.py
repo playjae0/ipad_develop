@@ -25,10 +25,12 @@ MAX_DEFECT_COUNT: int = 16
 #
 # - Top level is selected first and can override ATIS source value.
 # - Defect_* columns only store sub labels (not top-level text).
-ATIS_TOP_LEVELS: list[str] = ["OK", "NG"]
+ATIS_TOP_LEVELS: list[str] = ["OK", "Damage", "Crack", "Scrap"]
 ATIS_SUB_LABELS: dict[str, list[str]] = {
-    "OK": [],
-    "NG": DEFAULT_DEFECT_LIST,
+    "OK": ["OK"],
+    "Damage": ["Damage", "Dust", "Contamination", "Wrinkle", "Etc"],
+    "Crack": ["Crack", "Scratch", "Etc"],
+    "Scrap": ["Scrap", "Etc"],
 }
 
 # Position settings (must stay fixed)
@@ -70,3 +72,9 @@ ADMIN_EMPLOYEE_ID: str = "ADMIN000000000001"
 ADMIN_FULL_NAME: str = "System Admin"
 ADMIN_EMAIL: str = "admin@example.com"
 ADMIN_PASSWORD: str = "ChangeMe!123"
+
+# Image loading strategy defaults (Step 1)
+IMAGE_LOADING_MODE_DEFAULT: str = "auto"
+EAGER_THRESHOLD_DEFAULT: int = 200
+PRELOAD_FORWARD_COUNT_DEFAULT: int = 2
+PRELOAD_BACKWARD_COUNT_DEFAULT: int = 1

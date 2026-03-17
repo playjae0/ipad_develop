@@ -46,8 +46,10 @@ def _render_unauthenticated_router() -> None:
         options=[AUTH_PAGE_LOGIN, AUTH_PAGE_SIGNUP],
         format_func=lambda value: "Login" if value == AUTH_PAGE_LOGIN else "Signup",
         horizontal=True,
-        key="auth_page",
+        index=0 if st.session_state.get("auth_page") != AUTH_PAGE_SIGNUP else 1,
+        key="auth_page_selector",
     )
+    st.session_state["auth_page"] = auth_page
 
     with st.sidebar:
         st.header("Authentication")

@@ -9,9 +9,14 @@ import streamlit as st
 
 from src.constants import (
     KEY_CURRENT_CELL_INDEX,
+    KEY_EAGER_THRESHOLD,
     KEY_IMAGE_MAP,
+    KEY_IMAGE_LOADING_MODE,
     KEY_LABEL_SYNC_TOKEN,
     KEY_MASTER_DF,
+    KEY_PRELOAD_BACKWARD_COUNT,
+    KEY_PRELOAD_FORWARD_COUNT,
+    KEY_RESOLVED_LOADING_STRATEGY,
     KEY_UPLOAD_COMPLETED,
     SESSION_DEFAULTS,
 )
@@ -97,3 +102,37 @@ def get_label_sync_token() -> int:
     if isinstance(value, int):
         return value
     raise TypeError("Session state value for label sync token is not an integer.")
+
+
+def set_image_loading_settings(
+    *,
+    image_loading_mode: str,
+    eager_threshold: int,
+    preload_forward_count: int,
+    preload_backward_count: int,
+) -> None:
+    """Store image loading strategy inputs in session state."""
+    st.session_state[KEY_IMAGE_LOADING_MODE] = image_loading_mode
+    st.session_state[KEY_EAGER_THRESHOLD] = eager_threshold
+    st.session_state[KEY_PRELOAD_FORWARD_COUNT] = preload_forward_count
+    st.session_state[KEY_PRELOAD_BACKWARD_COUNT] = preload_backward_count
+
+
+def get_image_loading_settings() -> dict[str, int | str]:
+    """Get image loading strategy inputs from session state."""
+    return {
+        "image_loading_mode": st.session_state.get(KEY_IMAGE_LOADING_MODE, "auto"),
+        "eager_threshold": int(st.session_state.get(KEY_EAGER_THRESHOLD, 200)),
+        "preload_forward_count": int(st.session_state.get(KEY_PRELOAD_FORWARD_COUNT, 2)),
+        "preload_backward_count": int(st.session_state.get(KEY_PRELOAD_BACKWARD_COUNT, 1)),
+    }
+
+
+def set_resolved_loading_strategy(strategy: str) -> None:
+    """Store resolved image loading strategy in session state."""
+    st.session_state[KEY_RESOLVED_LOADING_STRATEGY] = strategy
+
+
+def get_resolved_loading_strategy() -> str:
+    """Get resolved image loading strategy from session state."""
+    return str(st.session_state.get(KEY_RESOLVED_LOADING_STRATEGY, "auto"))

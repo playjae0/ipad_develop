@@ -15,9 +15,6 @@ def render_defect_selector(
 ) -> tuple[str, str, bool]:
     """Render top/sub defect selector and return (top, sub, changed)."""
     top_options = list(ATIS_TOP_LEVELS)
-    if current_top and current_top not in top_options:
-        top_options.append(current_top)
-
     default_top_index = top_options.index(current_top) if current_top in top_options else 0
     selected_top = st.radio(
         "상위 분류",
@@ -34,8 +31,8 @@ def render_defect_selector(
         st.caption("선택 가능한 하위 불량이 없습니다.")
         selected_sub = ""
     else:
-        button_labels = ["미선택", *sub_options]
-        button_values = ["", *sub_options]
+        button_labels = list(sub_options)
+        button_values = list(sub_options)
         selected_sub = "" if top_changed else current_sub
 
         for start in range(0, len(button_labels), 4):

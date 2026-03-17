@@ -4,12 +4,20 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import sqlite3
 
 import pandas as pd
 import streamlit as st
 
 from config import CSV_OUTPUT_ROOT_DIR, IMAGE_EXPORT_ROOT_DIR
-from config import AUTH_DB_PATH
+from config import (
+    AUTH_DB_PATH,
+    EAGER_THRESHOLD_DEFAULT,
+    IMAGE_LOADING_MODE_DEFAULT,
+    PRELOAD_BACKWARD_COUNT_DEFAULT,
+    PRELOAD_FORWARD_COUNT_DEFAULT,
+)
+from src.image_registry import load_image_bytes
 from src.lock.dataset_lock_manager import acquire_lock, release_lock
 from src.logging.activity_logger import log_labeling_activity
 from src.constants import (
@@ -34,12 +42,16 @@ from src.save_manager import (
     parse_version_from_filename,
 )
 from src.state_manager import (
+    get_image_loading_settings,
     get_current_cell_index,
     get_image_map,
     get_master_dataframe,
+    get_resolved_loading_strategy,
     is_upload_completed,
     set_current_cell_index,
+    set_image_loading_settings,
     set_master_dataframe,
+    set_resolved_loading_strategy,
     touch_label_sync_token,
 )
 from src.ui.image_grid import render_image_grid
@@ -73,6 +85,8 @@ def render_labeling_page() -> None:
             st.rerun()
         return
 
+    _resolve_and_store_image_loading_strategy(master_df=master_df, image_map=image_map)
+
     if not _ensure_dataset_lock():
         return
 
@@ -94,12 +108,228 @@ def render_labeling_page() -> None:
     _render_cell_progress_summary(sorted_df)
     _render_navigation_buttons(current_index, len(sorted_df))
 
-    changed = render_image_grid(df=sorted_df, image_map=image_map, row_index=current_index)
+    runtime_image_map = _build_runtime_image_map(
+        sorted_df=sorted_df,
+        image_map=image_map,
+        current_index=current_index,
+    )
+
+    changed = render_image_grid(df=sorted_df, image_map=runtime_image_map, row_index=current_index)
     if changed:
         set_master_dataframe(sorted_df)
         touch_label_sync_token()
 
     _render_save_section(sorted_df, image_map)
+
+
+def _resolve_and_store_image_loading_strategy(*, master_df: pd.DataFrame, image_map: dict[str, dict[str, object]]) -> None:
+    """Resolve image loading strategy (Step 1) and store settings/state for Step 2 hooks."""
+    settings = _load_image_loading_settings_from_db()
+    set_image_loading_settings(
+        image_loading_mode=str(settings["image_loading_mode"]),
+        eager_threshold=int(settings["eager_threshold"]),
+        preload_forward_count=int(settings["preload_forward_count"]),
+        preload_backward_count=int(settings["preload_backward_count"]),
+    )
+
+    image_count = _count_dataset_images(master_df=master_df, image_map=image_map)
+    resolved = _resolve_strategy_from_settings(image_count=image_count, settings=settings)
+    set_resolved_loading_strategy(resolved)
+
+    session_settings = get_image_loading_settings()
+    st.caption(
+        "Image loading strategy "
+        f"(mode={session_settings['image_loading_mode']}, resolved={get_resolved_loading_strategy()}, "
+        f"images={image_count}, eager_threshold={session_settings['eager_threshold']}, "
+        f"forward={session_settings['preload_forward_count']}, backward={session_settings['preload_backward_count']})"
+    )
+
+
+def _load_image_loading_settings_from_db() -> dict[str, int | str]:
+    """Load strategy settings from sqlite key-value table with safe defaults."""
+    defaults: dict[str, int | str] = {
+        "image_loading_mode": IMAGE_LOADING_MODE_DEFAULT,
+        "eager_threshold": EAGER_THRESHOLD_DEFAULT,
+        "preload_forward_count": PRELOAD_FORWARD_COUNT_DEFAULT,
+        "preload_backward_count": PRELOAD_BACKWARD_COUNT_DEFAULT,
+    }
+
+    with sqlite3.connect(str(AUTH_DB_PATH)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key TEXT PRIMARY KEY,
+                setting_value TEXT NOT NULL
+            )
+            """
+        )
+        rows = conn.execute(
+            "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN (?, ?, ?, ?)",
+            (
+                "image_loading_mode",
+                "eager_threshold",
+                "preload_forward_count",
+                "preload_backward_count",
+            ),
+        ).fetchall()
+
+    for key, value in rows:
+        if key in {"eager_threshold", "preload_forward_count", "preload_backward_count"}:
+            try:
+                defaults[key] = int(value)
+            except ValueError:
+                continue
+        elif key == "image_loading_mode" and value in {"auto", "eager", "lazy_cache"}:
+            defaults[key] = value
+
+    return defaults
+
+
+def _count_dataset_images(*, master_df: pd.DataFrame, image_map: dict[str, dict[str, object]]) -> int:
+    """Count dataset image size for strategy resolution without changing existing loading flow."""
+    if image_map:
+        return int(sum(len(position_map) for position_map in image_map.values()))
+
+    image_columns = [column for column in POSITION_COLUMNS if column in master_df.columns]
+    if not image_columns:
+        return 0
+
+    numeric_images = master_df[image_columns].apply(pd.to_numeric, errors="coerce").fillna(0)
+    return int(numeric_images.sum().sum())
+
+
+def _resolve_strategy_from_settings(*, image_count: int, settings: dict[str, int | str]) -> str:
+    """Resolve final strategy: eager/lazy_cache based on mode + threshold."""
+    mode = str(settings.get("image_loading_mode", IMAGE_LOADING_MODE_DEFAULT))
+    if mode == "eager":
+        return "eager"
+    if mode == "lazy_cache":
+        return "lazy_cache"
+
+    eager_threshold = int(settings.get("eager_threshold", EAGER_THRESHOLD_DEFAULT))
+    return "eager" if image_count <= eager_threshold else "lazy_cache"
+
+
+def _build_runtime_image_map(
+    *,
+    sorted_df: pd.DataFrame,
+    image_map: dict[str, dict[str, object]],
+    current_index: int,
+) -> dict[str, dict[str, object]]:
+    """Build render-time image map using eager/lazy image-data loading."""
+    cache = st.session_state.setdefault("image_data_cache", {})
+    dataset_key = _get_dataset_cache_key(sorted_df)
+
+    if st.session_state.get("image_data_cache_dataset_key") != dataset_key:
+        cache.clear()
+        st.session_state["image_data_cache_dataset_key"] = dataset_key
+
+    cell_ids = [str(value) for value in sorted_df[COL_CELL_ID].tolist()]
+    if not cell_ids:
+        return image_map
+
+    settings = get_image_loading_settings()
+    resolved = get_resolved_loading_strategy()
+
+    if resolved == "eager":
+        for cell_id in cell_ids:
+            _load_visible_images(image_map=image_map, cache=cache, cell_id=cell_id)
+    else:
+        _load_visible_images(image_map=image_map, cache=cache, cell_id=cell_ids[current_index])
+        _preload_neighbor_images(
+            cell_ids=cell_ids,
+            image_map=image_map,
+            cache=cache,
+            current_index=current_index,
+            preload_forward_count=int(settings["preload_forward_count"]),
+            preload_backward_count=int(settings["preload_backward_count"]),
+        )
+        _evict_old_cached_images(
+            cache=cache,
+            cell_ids=cell_ids,
+            current_index=current_index,
+            preload_forward_count=int(settings["preload_forward_count"]),
+            preload_backward_count=int(settings["preload_backward_count"]),
+        )
+
+    runtime_image_map: dict[str, dict[str, object]] = {}
+    for cell_id, position_map in image_map.items():
+        runtime_image_map[cell_id] = {}
+        for position, image_ref in position_map.items():
+            runtime_image_map[cell_id][position] = _get_cached_image(
+                cache=cache,
+                cell_id=cell_id,
+                position=position,
+                fallback=image_ref,
+            )
+
+    return runtime_image_map
+
+
+def _get_dataset_cache_key(sorted_df: pd.DataFrame) -> str:
+    """Build a dataset identity key from ordered cell ids."""
+    return "|".join(str(value) for value in sorted_df[COL_CELL_ID].tolist())
+
+
+def _load_visible_images(
+    *,
+    image_map: dict[str, dict[str, object]],
+    cache: dict[tuple[str, str], object],
+    cell_id: str,
+) -> None:
+    """Load current cell images into cache."""
+    for position, image_ref in image_map.get(cell_id, {}).items():
+        key = (cell_id, position)
+        if key not in cache:
+            try:
+                cache[key] = load_image_bytes(image_ref)
+            except Exception:
+                cache[key] = image_ref
+
+
+def _preload_neighbor_images(
+    *,
+    cell_ids: list[str],
+    image_map: dict[str, dict[str, object]],
+    cache: dict[tuple[str, str], object],
+    current_index: int,
+    preload_forward_count: int,
+    preload_backward_count: int,
+) -> None:
+    """Preload images for neighboring cells within rolling window."""
+    start = max(0, current_index - preload_backward_count)
+    end = min(len(cell_ids) - 1, current_index + preload_forward_count)
+    for idx in range(start, end + 1):
+        _load_visible_images(image_map=image_map, cache=cache, cell_id=cell_ids[idx])
+
+
+def _get_cached_image(
+    *,
+    cache: dict[tuple[str, str], object],
+    cell_id: str,
+    position: str,
+    fallback: object,
+) -> object:
+    """Return cached image payload when available."""
+    return cache.get((cell_id, position), fallback)
+
+
+def _evict_old_cached_images(
+    *,
+    cache: dict[tuple[str, str], object],
+    cell_ids: list[str],
+    current_index: int,
+    preload_forward_count: int,
+    preload_backward_count: int,
+) -> None:
+    """Evict image cache entries outside rolling window."""
+    start = max(0, current_index - preload_backward_count)
+    end = min(len(cell_ids) - 1, current_index + preload_forward_count)
+    keep_cell_ids = set(cell_ids[start : end + 1])
+
+    stale_keys = [key for key in cache if key[0] not in keep_cell_ids]
+    for key in stale_keys:
+        cache.pop(key, None)
 
 
 def _render_sidebar_source_info() -> None:

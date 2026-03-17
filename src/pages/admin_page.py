@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import secrets
+import sqlite3
 
 import pandas as pd
 import streamlit as st
 
-from config import AUTH_DB_PATH
+from config import (
+    AUTH_DB_PATH,
+    EAGER_THRESHOLD_DEFAULT,
+    IMAGE_LOADING_MODE_DEFAULT,
+    PRELOAD_BACKWARD_COUNT_DEFAULT,
+    PRELOAD_FORWARD_COUNT_DEFAULT,
+)
 from src.auth.password_utils import hash_password
 from src.lock.dataset_lock_manager import force_unlock, get_active_locks
 from src.auth.user_store import (
@@ -54,6 +61,9 @@ def render_admin_page() -> None:
 
     st.subheader("Dataset Locks")
     _render_dataset_lock_section()
+
+    st.subheader("Image Loading Strategy")
+    _render_image_loading_strategy_section()
 
 
 def _render_user_management_section() -> None:
@@ -125,3 +135,110 @@ def _render_dataset_lock_section() -> None:
             st.rerun()
     else:
         st.info("활성 잠금이 없습니다.")
+
+
+def _render_image_loading_strategy_section() -> None:
+    """Render and save image loading strategy settings for labeling page."""
+    current = _load_image_loading_settings()
+
+    mode = st.selectbox(
+        "image_loading_mode",
+        options=["auto", "eager", "lazy_cache"],
+        index=["auto", "eager", "lazy_cache"].index(str(current["image_loading_mode"])),
+        help="auto: 이미지 수 기준 자동 선택 / eager: 전체 선로딩 / lazy_cache: 표시 범위+캐시",
+    )
+    eager_threshold = st.number_input(
+        "eager_threshold",
+        min_value=1,
+        step=1,
+        value=int(current["eager_threshold"]),
+    )
+    preload_forward_count = st.number_input(
+        "preload_forward_count",
+        min_value=0,
+        step=1,
+        value=int(current["preload_forward_count"]),
+    )
+    preload_backward_count = st.number_input(
+        "preload_backward_count",
+        min_value=0,
+        step=1,
+        value=int(current["preload_backward_count"]),
+    )
+
+    if st.button("이미지 로딩 전략 저장", use_container_width=True):
+        _save_image_loading_settings(
+            image_loading_mode=mode,
+            eager_threshold=int(eager_threshold),
+            preload_forward_count=int(preload_forward_count),
+            preload_backward_count=int(preload_backward_count),
+        )
+        st.success("이미지 로딩 전략 설정을 저장했습니다.")
+
+
+def _load_image_loading_settings() -> dict[str, int | str]:
+    """Load strategy settings from sqlite key-value table."""
+    defaults: dict[str, int | str] = {
+        "image_loading_mode": IMAGE_LOADING_MODE_DEFAULT,
+        "eager_threshold": EAGER_THRESHOLD_DEFAULT,
+        "preload_forward_count": PRELOAD_FORWARD_COUNT_DEFAULT,
+        "preload_backward_count": PRELOAD_BACKWARD_COUNT_DEFAULT,
+    }
+
+    with sqlite3.connect(str(AUTH_DB_PATH)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key TEXT PRIMARY KEY,
+                setting_value TEXT NOT NULL
+            )
+            """
+        )
+        rows = conn.execute(
+            "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN (?, ?, ?, ?)",
+            (
+                "image_loading_mode",
+                "eager_threshold",
+                "preload_forward_count",
+                "preload_backward_count",
+            ),
+        ).fetchall()
+
+    for key, value in rows:
+        if key in {"eager_threshold", "preload_forward_count", "preload_backward_count"}:
+            try:
+                defaults[key] = int(value)
+            except ValueError:
+                continue
+        else:
+            defaults[key] = value
+    return defaults
+
+
+def _save_image_loading_settings(
+    *,
+    image_loading_mode: str,
+    eager_threshold: int,
+    preload_forward_count: int,
+    preload_backward_count: int,
+) -> None:
+    """Persist image loading strategy settings to sqlite key-value table."""
+    with sqlite3.connect(str(AUTH_DB_PATH)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key TEXT PRIMARY KEY,
+                setting_value TEXT NOT NULL
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO app_settings (setting_key, setting_value) VALUES (?, ?)",
+            [
+                ("image_loading_mode", image_loading_mode),
+                ("eager_threshold", str(max(1, eager_threshold))),
+                ("preload_forward_count", str(max(0, preload_forward_count))),
+                ("preload_backward_count", str(max(0, preload_backward_count))),
+            ],
+        )
+        conn.commit()
