@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from src.constants import COL_CELL_ID, DEFECT_COLUMNS
+from src.state_manager import get_sidebar_cell_index, set_sidebar_cell_index
 
 
 def render_sidebar_cell_list(df: pd.DataFrame, current_index: int) -> int:
@@ -20,10 +21,15 @@ def render_sidebar_cell_list(df: pd.DataFrame, current_index: int) -> int:
     safe_index = min(max(current_index, 0), max_index)
 
     options = list(range(len(sorted_df)))
+    widget_index = get_sidebar_cell_index(safe_index)
+    if widget_index != safe_index:
+        set_sidebar_cell_index(safe_index)
+
     selected_index = st.sidebar.radio(
         "cell_id 목록",
         options=options,
         index=safe_index,
+        key="sidebar_cell_index",
         format_func=lambda idx: _build_cell_summary(sorted_df, idx),
     )
 

@@ -45,6 +45,9 @@
   - _render_csv_status_overview_table(): 결과 폴더 기준 최신 CSV 저장 현황 테이블 표시.
 - src/pages/labeling_page.py
   - render_labeling_page(): 라벨링 메인 화면 렌더링.
+  - _resolve_and_store_image_loading_strategy(...): 관리자 설정/이미지 수 기준 로딩 전략 결정 및 상태 반영.
+  - _build_runtime_image_map(...): eager/lazy_cache 전략에 따라 렌더용 이미지 맵 생성.
+  - _load_visible_images(...), _preload_neighbor_images(...), _evict_old_cached_images(...): lazy rolling cache 보조.
   - _render_sidebar_source_info(): 선택된 폴더 정보 표시.
   - _render_sidebar_previous_csv_loader(): 이전 CSV 값 불러오기(2단계 확인) UI.
   - _render_save_section(df, image_map): CSV/이미지 저장 UI.
@@ -52,15 +55,18 @@
   - _render_navigation_buttons(current_index, total_count): 이전/다음 셀 이동 UI.
   - _safe_index(index, length): 인덱스 범위 보정.
 - src/pages/admin_page.py
-  - render_admin_page(): 로그인 이력/데이터셋 접근 이력 조회 화면.
+  - render_admin_page(): 사용자/이력/락 모니터링 + 이미지 로딩 전략 설정 화면.
+  - _render_image_loading_strategy_section(): image_loading_mode/eager_threshold/preload count 설정 UI.
+  - _load_image_loading_settings(), _save_image_loading_settings(): SQLite app_settings 저장/조회.
 
 4) src/ui
 - src/ui/defect_controls.py
-  - render_defect_buttons(...): 결함 선택 버튼 영역 렌더링 및 선택값 반환.
+  - render_defect_selector(...): 상위 단일선택 + 하위 라벨 버튼 렌더링 및 선택값 반환.
 - src/ui/image_grid.py
   - render_image_grid(...): 현재 cell의 포지션별 이미지/결함 UI 렌더링.
   - _render_single_position(...): 단일 포지션 카드 렌더링.
-  - _get_atis_value(...): ATIS 값 보조 조회.
+  - _get_atis_value(...): ATIS 상위값 조회(결측/비정상값은 OK 정규화).
+  - _apply_atis_override(...): 상위값 변경 시 ATIS `Original/New` 반영.
   - _to_image_source(image_ref): 표시 가능한 이미지 소스로 변환.
 - src/ui/sidebar_list.py
   - render_sidebar_cell_list(df, current_index): cell 목록/선택 UI.
@@ -82,6 +88,7 @@
 - src/image_registry.py
   - register_image(image_map, parse_result, file_reference): 파싱 결과를 image_map에 반영.
   - build_image_map(parsed_pairs): 전체 image_map 구축.
+  - load_image_bytes(file_reference): 이미지 참조에서 실제 bytes 지연 로딩.
 - src/dataframe_builder.py
   - build_master_dataframe(image_map): image_map 기반 master dataframe 생성.
 - src/atis_loader.py
@@ -94,6 +101,9 @@
   - set_current_cell_index/get_current_cell_index(): 현재 인덱스 저장/조회.
   - set_upload_completed/is_upload_completed(): 업로드 완료 상태 저장/조회.
   - touch_label_sync_token/get_label_sync_token(): 라벨 동기화 토큰 관리.
+  - set_image_loading_settings/get_image_loading_settings(): 이미지 로딩 설정 상태 저장/조회.
+  - set_resolved_loading_strategy/get_resolved_loading_strategy(): 최종 로딩 전략 저장/조회.
+  - set_sidebar_cell_index/get_sidebar_cell_index(): 사이드바 선택 인덱스 동기화.
 - src/save_manager.py
   - build_csv_export_payload(...): 기본 CSV 다운로드 파일명/바이트 생성.
   - build_csv_filename(...): CSV 파일명 생성.

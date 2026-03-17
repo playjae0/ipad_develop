@@ -136,3 +136,14 @@ def set_resolved_loading_strategy(strategy: str) -> None:
 def get_resolved_loading_strategy() -> str:
     """Get resolved image loading strategy from session state."""
     return str(st.session_state.get(KEY_RESOLVED_LOADING_STRATEGY, "auto"))
+
+
+def set_sidebar_cell_index(index: int) -> None:
+    """Store sidebar cell radio widget index for sync with current cell."""
+    st.session_state["sidebar_cell_index"] = index
+
+
+def get_sidebar_cell_index(default: int = 0) -> int:
+    """Get sidebar cell radio widget index."""
+    value = st.session_state.get("sidebar_cell_index", default)
+    return int(value) if isinstance(value, int) else default
