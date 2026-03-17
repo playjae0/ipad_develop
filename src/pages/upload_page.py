@@ -225,7 +225,7 @@ def _render_missing_counts(master_df: Any) -> None:
 
 
 def _render_csv_status_overview_table() -> None:
-    """Render CSV-only dataset progress board."""
+    """Render dataset progress board with CSV-first and image-workload fallback."""
     st.subheader("데이터셋 진행 현황")
 
     lock_map = _get_active_lock_map(str(AUTH_DB_PATH))
@@ -262,23 +262,27 @@ def _get_active_lock_map(db_path: str) -> dict[str, str]:
 
 @st.cache_data(ttl=60)
 def _calculate_progress_text_for_dataset(*, csv_root: str, line: str, period: str) -> str:
-    """Calculate dataset progress text using latest CSV only."""
+    """Calculate dataset progress text using latest CSV; fallback to image workload."""
     latest_csv = find_latest_csv_file(Path(csv_root) / line / period)
     if latest_csv is None:
-        return "-"
+        image_count = _count_dataset_images_in_folder(line=line, period=period)
+        return f"미작업 ({image_count} imgs)"
 
     try:
         df = pd.read_csv(latest_csv)
     except Exception:
-        return "-"
+        image_count = _count_dataset_images_in_folder(line=line, period=period)
+        return f"미작업 ({image_count} imgs)"
 
     total_cells = len(df)
     if total_cells <= 0:
-        return "-"
+        image_count = _count_dataset_images_in_folder(line=line, period=period)
+        return f"미작업 ({image_count} imgs)"
 
     defect_columns = [column for column in DEFECT_COLUMNS if column in df.columns]
     if not defect_columns:
-        return "-"
+        image_count = _count_dataset_images_in_folder(line=line, period=period)
+        return f"미작업 ({image_count} imgs)"
 
     defect_values = df[defect_columns].fillna("").astype(str).apply(lambda col: col.str.strip())
     processed_cells = int((defect_values != "").any(axis=1).sum())
@@ -293,6 +297,16 @@ def _calculate_progress_text_for_dataset(*, csv_root: str, line: str, period: st
     if progress_percent >= 100:
         return f"100% 완료 ({processed_cells}/{total_cells} cells, {total_images} imgs)"
     return f"{progress_percent}% ({processed_cells}/{total_cells} cells, {total_images} imgs)"
+
+
+@st.cache_data(ttl=120)
+def _count_dataset_images_in_folder(*, line: str, period: str) -> int:
+    """Count image files by allowed extensions under `data/images/{line}/{period}`."""
+    dataset_dir = Path(IMAGE_ROOT_DIR) / line / period
+    if not dataset_dir.exists() or not dataset_dir.is_dir():
+        return 0
+    files = collect_files_with_extensions(dataset_dir, ALLOWED_EXTENSIONS)
+    return len(files)
 
 
 def _release_lock_if_any() -> None:

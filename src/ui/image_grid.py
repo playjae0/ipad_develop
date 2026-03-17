@@ -19,6 +19,12 @@ POSITION_TO_DEFECT_COLUMN = {
     "AN(BOT)": "Defect_AN(BOT)",
 }
 
+BADGE_STYLE_BY_TOP_LEVEL = {
+    "Damage": "background:#fde8e8;color:#9b1c1c;",
+    "Crack": "background:#fff4e5;color:#9a3412;",
+    "Scrap": "background:#f3e8ff;color:#6b21a8;",
+}
+
 
 def render_image_grid(
     *,
@@ -66,9 +72,7 @@ def _render_single_position(
 
     with container:
         current_top = _get_atis_value(df, row_index, position)
-        raw_atis = _get_raw_atis_text(df, row_index, position)
-        title = f"{position} - {raw_atis}" if raw_atis else f"{position} - {current_top}"
-        st.markdown(f"**{title}**")
+        st.markdown(_build_position_title_with_badge(position=position, top_level=current_top), unsafe_allow_html=True)
         image_ref = image_map.get(cell_id, {}).get(position)
 
         if image_ref is None:
@@ -137,6 +141,20 @@ def _normalize_top_level(value: str) -> str:
     if value in ATIS_TOP_LEVELS:
         return value
     return "OK"
+
+
+def _build_position_title_with_badge(*, position: str, top_level: str) -> str:
+    """Build position title with soft ATIS badge (non-OK only)."""
+    normalized = _normalize_top_level(top_level)
+    style = BADGE_STYLE_BY_TOP_LEVEL.get(normalized)
+    if style is None:
+        return f"**{position}**"
+
+    badge_html = (
+        f"<span style=\"{style}padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;\">"
+        f"{normalized}</span>"
+    )
+    return f"**{position}**&nbsp;{badge_html}"
 
 
 def _apply_atis_override(df: pd.DataFrame, row_index: int, atis_col: str, selected_top: str) -> None:
