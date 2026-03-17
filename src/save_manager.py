@@ -148,7 +148,7 @@ def extract_employee_and_version_from_filename(filename: str) -> tuple[str, str]
 
 
 def load_previous_defect_values(csv_path: str | Path) -> pd.DataFrame:
-    """Load previous CSV and return defect columns + cell_id only."""
+    """Load previous CSV and return cell_id + defect + ATIS-like columns."""
     loaded_df = pd.read_csv(csv_path)
     required_columns = [
         COL_CELL_ID,
@@ -157,12 +157,18 @@ def load_previous_defect_values(csv_path: str | Path) -> pd.DataFrame:
         COL_DEFECT_AN_TOP,
         COL_DEFECT_AN_BOT,
     ]
+    atis_columns = [
+        column
+        for column in loaded_df.columns
+        if column.lower().startswith("atis")
+    ]
     available_columns = [column for column in required_columns if column in loaded_df.columns]
+    available_columns.extend([column for column in atis_columns if column not in available_columns])
     return loaded_df[available_columns].copy()
 
 
 def apply_loaded_defect_values(current_df: pd.DataFrame, loaded_df: pd.DataFrame) -> pd.DataFrame:
-    """Overwrite only defect columns on current dataframe by `cell_id` match."""
+    """Overwrite defect columns and changed ATIS columns on current dataframe by `cell_id` match."""
     if COL_CELL_ID not in loaded_df.columns:
         return current_df
 
@@ -172,8 +178,13 @@ def apply_loaded_defect_values(current_df: pd.DataFrame, loaded_df: pd.DataFrame
         COL_DEFECT_AN_TOP,
         COL_DEFECT_AN_BOT,
     ]
-    target_columns = [column for column in defect_columns if column in loaded_df.columns]
-    if not target_columns:
+    target_defect_columns = [column for column in defect_columns if column in loaded_df.columns]
+    atis_columns = [
+        column
+        for column in loaded_df.columns
+        if column.lower().startswith("atis") and column in current_df.columns
+    ]
+    if not target_defect_columns and not atis_columns:
         return current_df
 
     merged = current_df.copy()
@@ -182,8 +193,15 @@ def apply_loaded_defect_values(current_df: pd.DataFrame, loaded_df: pd.DataFrame
         cell_id = row[COL_CELL_ID]
         if cell_id not in indexed_loaded.index:
             continue
-        for column in target_columns:
+        for column in target_defect_columns:
             merged.at[idx, column] = indexed_loaded.at[cell_id, column]
+        for column in atis_columns:
+            loaded_value = indexed_loaded.at[cell_id, column]
+            current_value = merged.at[idx, column]
+            loaded_text = "" if pd.isna(loaded_value) else str(loaded_value).strip()
+            current_text = "" if pd.isna(current_value) else str(current_value).strip()
+            if loaded_text and loaded_text != current_text:
+                merged.at[idx, column] = loaded_value
     return merged
 
 

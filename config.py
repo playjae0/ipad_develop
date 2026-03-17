@@ -21,6 +21,16 @@ DEFAULT_DEFECT_LIST: list[str] = [
 ]
 MAX_DEFECT_COUNT: int = 16
 
+# ATIS-driven defect hierarchy settings
+#
+# - Top level is selected first and can override ATIS source value.
+# - Defect_* columns only store sub labels (not top-level text).
+ATIS_TOP_LEVELS: list[str] = ["OK", "NG"]
+ATIS_SUB_LABELS: dict[str, list[str]] = {
+    "OK": [],
+    "NG": DEFAULT_DEFECT_LIST,
+}
+
 # Position settings (must stay fixed)
 POSITIONS: list[str] = [
     "CA(TOP)",

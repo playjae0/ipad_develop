@@ -38,12 +38,22 @@ def _initialize_auth_state() -> None:
 
 
 def _render_unauthenticated_router() -> None:
+    st.title("Defect Labeling")
+    st.caption("로그인 후 업로드/라벨링 페이지를 사용할 수 있습니다.")
+
+    auth_page = st.radio(
+        "인증 페이지",
+        options=[AUTH_PAGE_LOGIN, AUTH_PAGE_SIGNUP],
+        format_func=lambda value: "Login" if value == AUTH_PAGE_LOGIN else "Signup",
+        horizontal=True,
+        key="auth_page",
+    )
+
     with st.sidebar:
         st.header("Authentication")
-        st.button("Login", on_click=lambda: st.session_state.__setitem__("auth_page", AUTH_PAGE_LOGIN))
-        st.button("Signup", on_click=lambda: st.session_state.__setitem__("auth_page", AUTH_PAGE_SIGNUP))
+        st.caption("메인 화면에서 Login/Signup 탭을 선택하세요.")
 
-    if st.session_state["auth_page"] == AUTH_PAGE_SIGNUP:
+    if auth_page == AUTH_PAGE_SIGNUP:
         render_signup_page(str(AUTH_DB_PATH))
     else:
         render_login_page(str(AUTH_DB_PATH))

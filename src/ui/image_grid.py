@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from src.ui.defect_controls import render_defect_buttons
+from src.ui.defect_controls import render_defect_selector
 
 
 POSITION_TO_DEFECT_COLUMN = {
@@ -60,11 +60,13 @@ def _render_single_position(
 ) -> bool:
     """Render one position panel including image and defect buttons."""
     defect_col = POSITION_TO_DEFECT_COLUMN[position]
+    atis_col = f"ATIS_{position}"
     changed = False
 
     with container:
-        atis_value = _get_atis_value(df, row_index, position)
-        title = f"{position} - {atis_value}" if atis_value else position
+        current_top = _get_atis_value(df, row_index, position)
+        raw_atis = _get_raw_atis_text(df, row_index, position)
+        title = f"{position} - {raw_atis}" if raw_atis else f"{position} - {current_top}"
         st.markdown(f"**{title}**")
         image_ref = image_map.get(cell_id, {}).get(position)
 
@@ -76,31 +78,78 @@ def _render_single_position(
             except Exception as error:  # pragma: no cover - UI safety fallback
                 st.warning(f"이미지 표시 실패: {error}")
 
-        selected, value_changed = render_defect_buttons(
-            df=df,
-            row_index=row_index,
-            defect_column=defect_col,
+        current_sub = str(df.at[row_index, defect_col] or "").strip()
+        selected_top, selected_sub, selector_changed = render_defect_selector(
+            current_top=current_top,
+            current_sub=current_sub,
             widget_key_prefix=f"defect_{cell_id}_{position}",
         )
 
-        if value_changed:
-            df.at[row_index, defect_col] = selected
+        if selector_changed:
+            if selected_top != current_top:
+                _apply_atis_override(df, row_index, atis_col, selected_top)
+                selected_sub = ""
+            df.at[row_index, defect_col] = selected_sub
             changed = True
 
     return changed
 
 
-
 def _get_atis_value(df: pd.DataFrame, row_index: int, position: str) -> str:
-    """Return ATIS value text for a position when ATIS column exists."""
+    """Return ATIS top-level value for a position, normalizing NaN/blank to OK."""
+    raw_text = _get_raw_atis_text(df, row_index, position)
+    if not raw_text:
+        return "OK"
+
+    if "/" in raw_text:
+        _, new_value = _split_atis_override(raw_text)
+        return new_value
+    return raw_text
+
+
+def _get_raw_atis_text(df: pd.DataFrame, row_index: int, position: str) -> str:
+    """Return raw ATIS text for a position when column exists."""
     atis_col = f"ATIS_{position}"
     if atis_col not in df.columns:
         return ""
 
     value = str(df.at[row_index, atis_col] or "").strip()
     if not value or value.lower() == "nan":
-        return ""
+        return "OK"
     return value
+
+
+def _split_atis_override(text: str) -> tuple[str, str]:
+    """Split `Original/New` formatted ATIS text."""
+    if "/" not in text:
+        normalized = text.strip() or "OK"
+        return normalized, normalized
+
+    original, new = text.split("/", 1)
+    original_text = original.strip() or "OK"
+    new_text = new.strip() or original_text
+    return original_text, new_text
+
+
+def _apply_atis_override(df: pd.DataFrame, row_index: int, atis_col: str, selected_top: str) -> None:
+    """Apply ATIS override using `Original/New` format when top-level changes."""
+    if atis_col not in df.columns:
+        return
+
+    raw_text = str(df.at[row_index, atis_col] or "").strip()
+    if not raw_text or raw_text.lower() == "nan":
+        raw_text = "OK"
+
+    original, current = _split_atis_override(raw_text)
+    if selected_top == current:
+        return
+
+    if selected_top == original:
+        df.at[row_index, atis_col] = original
+        return
+
+    df.at[row_index, atis_col] = f"{original}/{selected_top}"
+
 
 def _to_image_source(image_ref: Any) -> Any:
     """Normalize image source for streamlit display."""

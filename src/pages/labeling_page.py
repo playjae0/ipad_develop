@@ -31,6 +31,7 @@ from src.save_manager import (
     find_latest_csv_file,
     find_latest_csv_version,
     load_previous_defect_values,
+    parse_version_from_filename,
 )
 from src.state_manager import (
     get_current_cell_index,
@@ -75,6 +76,9 @@ def render_labeling_page() -> None:
     if not _ensure_dataset_lock():
         return
 
+    if not _render_auto_previous_csv_prompt():
+        return
+
     _render_sidebar_source_info()
     _render_sidebar_previous_csv_loader()
 
@@ -106,22 +110,29 @@ def _render_sidebar_source_info() -> None:
 
 
 def _render_sidebar_previous_csv_loader() -> None:
-    """Render two-step previous CSV load flow for folder-select mode."""
+    """Render manual previous CSV load flow for folder-select mode."""
     upload_source_type = st.session_state.get(KEY_UPLOAD_SOURCE_TYPE, "drag_upload")
     selected_subpath = st.session_state.get(KEY_SELECTED_IMAGE_SUBPATH)
     if upload_source_type != "folder_select" or not isinstance(selected_subpath, str) or not selected_subpath.strip():
         return
 
     result_dir = ensure_result_folder_from_selected_subpath(CSV_OUTPUT_ROOT_DIR, selected_subpath)
-    latest_csv = find_latest_csv_file(result_dir)
+    csv_files = _list_versioned_csv_files(result_dir)
 
     st.sidebar.divider()
     st.sidebar.caption("이전 CSV 불러오기")
-    if latest_csv is None:
+    if not csv_files:
         st.sidebar.caption("불러올 CSV가 없습니다.")
         return
 
-    st.sidebar.caption(f"대상 파일: {latest_csv.name}")
+    selected_file_name = st.sidebar.selectbox(
+        "불러올 CSV 파일",
+        options=[file_path.name for file_path in csv_files],
+        index=0,
+    )
+    selected_csv = next((path for path in csv_files if path.name == selected_file_name), None)
+    if selected_csv is None:
+        return
 
     if st.sidebar.button("이전값 불러오기"):
         st.session_state["confirm_load_previous_csv"] = True
@@ -129,19 +140,61 @@ def _render_sidebar_previous_csv_loader() -> None:
     if st.session_state.get("confirm_load_previous_csv", False):
         st.sidebar.warning("진짜 불러오겠습니까? 현재 작업 내용이 덮어 씌워질 수 있습니다.")
         if st.sidebar.button("불러오기 확인"):
-            current_df = get_master_dataframe()
-            if current_df is None or current_df.empty:
-                st.sidebar.error("현재 데이터프레임이 비어 있어 불러올 수 없습니다.")
-                st.session_state["confirm_load_previous_csv"] = False
-                return
-
-            loaded_df = load_previous_defect_values(latest_csv)
-            merged_df = apply_loaded_defect_values(current_df, loaded_df)
-            set_master_dataframe(merged_df)
-            touch_label_sync_token()
+            _load_previous_values_into_current_df(selected_csv)
             st.session_state["confirm_load_previous_csv"] = False
-            st.sidebar.success(f"불러오기 완료: {latest_csv.name}")
+            st.sidebar.success(f"불러오기 완료: {selected_csv.name}")
             st.rerun()
+
+
+def _render_auto_previous_csv_prompt() -> bool:
+    """Prompt once to load latest CSV when dataset is opened in folder-select mode."""
+    upload_source_type = st.session_state.get(KEY_UPLOAD_SOURCE_TYPE, "drag_upload")
+    selected_subpath = st.session_state.get(KEY_SELECTED_IMAGE_SUBPATH)
+    if upload_source_type != "folder_select" or not isinstance(selected_subpath, str) or not selected_subpath.strip():
+        return True
+
+    result_dir = ensure_result_folder_from_selected_subpath(CSV_OUTPUT_ROOT_DIR, selected_subpath)
+    latest_csv = find_latest_csv_file(result_dir)
+    if latest_csv is None:
+        return True
+
+    prompt_key = f"auto_load_prompt_done::{selected_subpath}"
+    if st.session_state.get(prompt_key, False):
+        return True
+
+    st.info("이전 파일이 있습니다. 불러오겠습니까?")
+    st.caption(f"대상 파일: {latest_csv.name}")
+    col_yes, col_no = st.columns(2)
+    with col_yes:
+        if st.button("불러오기", key=f"auto_load_yes::{selected_subpath}"):
+            _load_previous_values_into_current_df(latest_csv)
+            st.session_state[prompt_key] = True
+            st.rerun()
+    with col_no:
+        if st.button("건너뛰기", key=f"auto_load_no::{selected_subpath}"):
+            st.session_state[prompt_key] = True
+            st.rerun()
+    return False
+
+
+def _list_versioned_csv_files(result_dir: Path) -> list[Path]:
+    """List versioned CSV files sorted by latest version first."""
+    files = [path for path in result_dir.glob("*.csv") if parse_version_from_filename(path.name) is not None]
+    files.sort(key=lambda path: parse_version_from_filename(path.name) or (0, 0), reverse=True)
+    return files
+
+
+def _load_previous_values_into_current_df(csv_path: Path) -> None:
+    """Load selected CSV and merge defect/ATIS columns into current dataframe."""
+    current_df = get_master_dataframe()
+    if current_df is None or current_df.empty:
+        st.warning("현재 데이터프레임이 비어 있어 불러올 수 없습니다.")
+        return
+
+    loaded_df = load_previous_defect_values(csv_path)
+    merged_df = apply_loaded_defect_values(current_df, loaded_df)
+    set_master_dataframe(merged_df)
+    touch_label_sync_token()
 
 
 def _render_save_section(df: pd.DataFrame, image_map: dict[str, dict[str, object]]) -> None:
