@@ -43,6 +43,7 @@ from src.state_manager import (
     set_current_cell_index,
     set_image_map,
     set_master_dataframe,
+    set_selected_cell_id,
     set_upload_completed,
 )
 from src.validation import (
@@ -203,6 +204,9 @@ def _render_validation_result(uploaded_files: list[Any]) -> None:
         set_master_dataframe(master_df)
         set_image_map(image_map)
         set_current_cell_index(0)
+        first_cell_id = str(master_df.sort_values(COL_CELL_ID).iloc[0][COL_CELL_ID]) if not master_df.empty else None
+        set_selected_cell_id(first_cell_id)
+        st.session_state["sidebar_force_sync"] = True
         set_upload_completed(True)
         st.session_state["current_page"] = PAGE_LABELING
         st.success("세션 상태 저장 완료. 라벨링 페이지로 이동합니다.")

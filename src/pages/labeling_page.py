@@ -47,11 +47,13 @@ from src.state_manager import (
     get_image_map,
     get_master_dataframe,
     get_resolved_loading_strategy,
+    get_selected_cell_id,
     is_upload_completed,
     set_current_cell_index,
     set_image_loading_settings,
     set_master_dataframe,
     set_resolved_loading_strategy,
+    set_selected_cell_id,
     touch_label_sync_token,
 )
 from src.ui.image_grid import render_image_grid
@@ -97,16 +99,20 @@ def render_labeling_page() -> None:
     _render_sidebar_previous_csv_loader()
 
     sorted_df = master_df.sort_values(COL_CELL_ID).reset_index(drop=True)
-    current_index = _safe_index(get_current_cell_index(), len(sorted_df))
+    current_index = _resolve_current_index_from_selected_cell_id(sorted_df)
+    current_cell_id = str(sorted_df.iloc[current_index][COL_CELL_ID])
 
-    selected_index = render_sidebar_cell_list(sorted_df, current_index)
-    if selected_index != current_index:
+    selected_cell_id = render_sidebar_cell_list(sorted_df, current_cell_id)
+    if selected_cell_id and selected_cell_id != current_cell_id:
+        index_map = {str(cell_id): idx for idx, cell_id in enumerate(sorted_df[COL_CELL_ID].tolist())}
+        selected_index = index_map.get(selected_cell_id, current_index)
+        set_selected_cell_id(selected_cell_id)
         set_current_cell_index(selected_index)
         current_index = selected_index
 
     render_status_panel(sorted_df, current_index)
     _render_cell_progress_summary(sorted_df)
-    _render_navigation_buttons(current_index, len(sorted_df))
+    _render_navigation_buttons(current_index, sorted_df)
 
     runtime_image_map = _build_runtime_image_map(
         sorted_df=sorted_df,
@@ -208,6 +214,26 @@ def _resolve_strategy_from_settings(*, image_count: int, settings: dict[str, int
 
     eager_threshold = int(settings.get("eager_threshold", EAGER_THRESHOLD_DEFAULT))
     return "eager" if image_count <= eager_threshold else "lazy_cache"
+
+
+def _resolve_current_index_from_selected_cell_id(sorted_df: pd.DataFrame) -> int:
+    """Resolve current index from selected cell_id (single source of truth)."""
+    if sorted_df.empty:
+        return 0
+
+    cell_ids = [str(value) for value in sorted_df[COL_CELL_ID].tolist()]
+    selected_cell_id = get_selected_cell_id()
+    if selected_cell_id in cell_ids:
+        resolved_index = cell_ids.index(selected_cell_id)
+        set_current_cell_index(resolved_index)
+        return resolved_index
+
+    fallback_index = _safe_index(get_current_cell_index(), len(sorted_df))
+    fallback_cell_id = cell_ids[fallback_index]
+    set_selected_cell_id(fallback_cell_id)
+    set_current_cell_index(fallback_index)
+    st.session_state["sidebar_force_sync"] = True
+    return fallback_index
 
 
 def _build_runtime_image_map(
@@ -519,18 +545,26 @@ def _resolve_csv_output_dir_and_filename(employee_id: str) -> tuple[Path, str]:
     return chosen_dir, file_name
 
 
-def _render_navigation_buttons(current_index: int, total_count: int) -> None:
+def _render_navigation_buttons(current_index: int, sorted_df: pd.DataFrame) -> None:
     """Render previous/next navigation controls."""
+    total_count = len(sorted_df)
+    cell_ids = [str(value) for value in sorted_df[COL_CELL_ID].tolist()]
     col_prev, col_next = st.columns(2)
 
     with col_prev:
         if st.button("이전 cell", disabled=(current_index <= 0)):
-            set_current_cell_index(current_index - 1)
+            target_index = current_index - 1
+            set_current_cell_index(target_index)
+            set_selected_cell_id(cell_ids[target_index])
+            st.session_state["sidebar_force_sync"] = True
             st.rerun()
 
     with col_next:
         if st.button("다음 cell", disabled=(current_index >= total_count - 1)):
-            set_current_cell_index(current_index + 1)
+            target_index = current_index + 1
+            set_current_cell_index(target_index)
+            set_selected_cell_id(cell_ids[target_index])
+            st.session_state["sidebar_force_sync"] = True
             st.rerun()
 
 

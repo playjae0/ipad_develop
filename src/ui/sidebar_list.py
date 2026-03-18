@@ -6,39 +6,43 @@ import pandas as pd
 import streamlit as st
 
 from src.constants import COL_CELL_ID, DEFECT_COLUMNS
-from src.state_manager import get_sidebar_cell_index, set_sidebar_cell_index
 
 
-def render_sidebar_cell_list(df: pd.DataFrame, current_index: int) -> int:
+def render_sidebar_cell_list(df: pd.DataFrame, current_cell_id: str) -> str:
     """Render sorted cell list with defect summary values in sidebar.
 
-    Returns updated selected index.
+    Returns updated selected cell_id.
     """
     st.sidebar.subheader("Cell List")
 
     sorted_df = df.sort_values(COL_CELL_ID).reset_index(drop=True)
-    max_index = max(len(sorted_df) - 1, 0)
-    safe_index = min(max(current_index, 0), max_index)
+    options = [str(value) for value in sorted_df[COL_CELL_ID].tolist()]
+    if not options:
+        return ""
 
-    options = list(range(len(sorted_df)))
-    widget_index = get_sidebar_cell_index(safe_index)
-    if widget_index != safe_index:
-        set_sidebar_cell_index(safe_index)
+    safe_cell_id = current_cell_id if current_cell_id in options else options[0]
+    force_sync = bool(st.session_state.get("sidebar_force_sync", False))
+    if force_sync and st.session_state.get("sidebar_cell_id") != safe_cell_id:
+        st.session_state["sidebar_cell_id"] = safe_cell_id
+    st.session_state["sidebar_force_sync"] = False
 
-    selected_index = st.sidebar.radio(
+    selected_cell_id = st.sidebar.radio(
         "cell_id 목록",
         options=options,
-        index=safe_index,
-        key="sidebar_cell_index",
-        format_func=lambda idx: _build_cell_summary(sorted_df, idx),
+        key="sidebar_cell_id",
+        format_func=lambda cell_id: _build_cell_summary_by_cell_id(sorted_df, cell_id),
     )
 
-    return int(selected_index)
+    return str(selected_cell_id)
 
 
-def _build_cell_summary(df: pd.DataFrame, index: int) -> str:
+def _build_cell_summary_by_cell_id(df: pd.DataFrame, cell_id: str) -> str:
     """Build display text with cell_id + 4 defect values (no column names)."""
-    row = df.iloc[index]
+    matched = df[df[COL_CELL_ID].astype(str) == str(cell_id)]
+    if matched.empty:
+        return str(cell_id)
+
+    row = matched.iloc[0]
     values = [str(row[col]).strip() for col in DEFECT_COLUMNS]
     normalized = [value if value else "-" for value in values]
     return f"{row[COL_CELL_ID]} | {' / '.join(normalized)}"

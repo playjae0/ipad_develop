@@ -28,6 +28,7 @@ BASE_DF_COLUMNS = [COL_CELL_ID, *POSITION_COLUMNS, *DEFECT_COLUMNS]
 KEY_MASTER_DF = "master_df"
 KEY_IMAGE_MAP = "image_map"
 KEY_CURRENT_CELL_INDEX = "current_cell_index"
+KEY_SELECTED_CELL_ID = "selected_cell_id"
 KEY_UPLOAD_COMPLETED = "upload_completed"
 KEY_LABEL_SYNC_TOKEN = "label_sync_token"
 KEY_SELECTED_FOLDER_INFO = "selected_folder_info"
@@ -43,6 +44,7 @@ SESSION_DEFAULTS = {
     KEY_MASTER_DF: None,
     KEY_IMAGE_MAP: {},
     KEY_CURRENT_CELL_INDEX: 0,
+    KEY_SELECTED_CELL_ID: None,
     KEY_UPLOAD_COMPLETED: False,
     KEY_LABEL_SYNC_TOKEN: 0,
     KEY_SELECTED_FOLDER_INFO: "",

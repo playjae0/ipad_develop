@@ -17,6 +17,7 @@ from src.constants import (
     KEY_PRELOAD_BACKWARD_COUNT,
     KEY_PRELOAD_FORWARD_COUNT,
     KEY_RESOLVED_LOADING_STRATEGY,
+    KEY_SELECTED_CELL_ID,
     KEY_UPLOAD_COMPLETED,
     SESSION_DEFAULTS,
 )
@@ -71,6 +72,21 @@ def get_current_cell_index() -> int:
     if isinstance(value, int):
         return value
     raise TypeError("Session state value for current cell index is not an integer.")
+
+
+def set_selected_cell_id(cell_id: str | None) -> None:
+    """Store selected cell_id as stable selection source."""
+    st.session_state[KEY_SELECTED_CELL_ID] = cell_id
+
+
+def get_selected_cell_id() -> str | None:
+    """Get selected cell_id from session state."""
+    value: Any = st.session_state.get(KEY_SELECTED_CELL_ID)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
 
 
 def set_upload_completed(is_completed: bool) -> None:
