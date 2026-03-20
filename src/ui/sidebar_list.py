@@ -8,8 +8,8 @@ import streamlit as st
 from src.constants import COL_CELL_ID, DEFECT_COLUMNS
 
 
-def render_sidebar_cell_list(df: pd.DataFrame, current_cell_id: str) -> str:
-    """Render sorted cell list with defect summary values in sidebar.
+def render_sidebar_cell_list(df: pd.DataFrame, selected_cell_id: str) -> str:
+    """Render sorted cell list in sidebar using selected_cell_id as the source of truth.
 
     Returns updated selected cell_id.
     """
@@ -20,7 +20,7 @@ def render_sidebar_cell_list(df: pd.DataFrame, current_cell_id: str) -> str:
     if not options:
         return ""
 
-    safe_cell_id = current_cell_id if current_cell_id in options else options[0]
+    safe_cell_id = selected_cell_id if selected_cell_id in options else options[0]
     force_sync = bool(st.session_state.get("sidebar_force_sync", False))
     if force_sync and st.session_state.get("sidebar_cell_id") != safe_cell_id:
         st.session_state["sidebar_cell_id"] = safe_cell_id

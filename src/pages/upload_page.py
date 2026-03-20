@@ -40,7 +40,6 @@ from src.dataframe_builder import build_master_dataframe
 from src.image_registry import build_image_map
 from src.state_manager import (
     initialize_session_state,
-    set_current_cell_index,
     set_image_map,
     set_master_dataframe,
     set_selected_cell_id,
@@ -199,11 +198,10 @@ def _render_validation_result(uploaded_files: list[Any]) -> None:
                 db_path=AUTH_DB_PATH,
                 employee_id=employee_id,
                 folder_name=selected_folder_info,
-            )
+        )
 
         set_master_dataframe(master_df)
         set_image_map(image_map)
-        set_current_cell_index(0)
         first_cell_id = str(master_df.sort_values(COL_CELL_ID).iloc[0][COL_CELL_ID]) if not master_df.empty else None
         set_selected_cell_id(first_cell_id)
         st.session_state["sidebar_force_sync"] = True

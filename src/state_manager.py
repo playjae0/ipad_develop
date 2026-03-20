@@ -8,7 +8,6 @@ import pandas as pd
 import streamlit as st
 
 from src.constants import (
-    KEY_CURRENT_CELL_INDEX,
     KEY_EAGER_THRESHOLD,
     KEY_IMAGE_MAP,
     KEY_IMAGE_LOADING_MODE,
@@ -57,21 +56,6 @@ def get_image_map() -> dict[str, dict[str, Any]]:
     if isinstance(value, dict):
         return value
     raise TypeError("Session state value for image_map is not a dictionary.")
-
-
-def set_current_cell_index(index: int) -> None:
-    """Store selected cell index for navigation persistence."""
-    if index < 0:
-        raise ValueError("Current cell index cannot be negative.")
-    st.session_state[KEY_CURRENT_CELL_INDEX] = index
-
-
-def get_current_cell_index() -> int:
-    """Retrieve current selected cell index."""
-    value: Any = st.session_state.get(KEY_CURRENT_CELL_INDEX, 0)
-    if isinstance(value, int):
-        return value
-    raise TypeError("Session state value for current cell index is not an integer.")
 
 
 def set_selected_cell_id(cell_id: str | None) -> None:
