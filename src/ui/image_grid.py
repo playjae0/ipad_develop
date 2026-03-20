@@ -31,30 +31,39 @@ def render_image_grid(
     df: pd.DataFrame,
     image_map: dict[str, dict[str, Any]],
     row_index: int,
-) -> bool:
+) -> tuple[bool, bool]:
     """Render 2x2 image grid and defect controls.
 
-    Returns True when any defect value was changed.
+    Returns (changed, interacted) for defect controls in the current cell.
     """
     row = df.iloc[row_index]
     cell_id = str(row["cell_id"])
 
     st.subheader(f"Cell: {cell_id}")
     changed = False
+    interacted = False
 
     st.markdown("### CA Set")
     ca_cols = st.columns([1, 1], gap="large")
-    changed = _render_single_position(ca_cols[0], df, image_map, row_index, "CA(TOP)", cell_id) or changed
-    changed = _render_single_position(ca_cols[1], df, image_map, row_index, "CA(BOT)", cell_id) or changed
+    position_changed, position_interacted = _render_single_position(ca_cols[0], df, image_map, row_index, "CA(TOP)", cell_id)
+    changed = position_changed or changed
+    interacted = position_interacted or interacted
+    position_changed, position_interacted = _render_single_position(ca_cols[1], df, image_map, row_index, "CA(BOT)", cell_id)
+    changed = position_changed or changed
+    interacted = position_interacted or interacted
 
     st.divider()
 
     st.markdown("### AN Set")
     an_cols = st.columns([1, 1], gap="large")
-    changed = _render_single_position(an_cols[0], df, image_map, row_index, "AN(TOP)", cell_id) or changed
-    changed = _render_single_position(an_cols[1], df, image_map, row_index, "AN(BOT)", cell_id) or changed
+    position_changed, position_interacted = _render_single_position(an_cols[0], df, image_map, row_index, "AN(TOP)", cell_id)
+    changed = position_changed or changed
+    interacted = position_interacted or interacted
+    position_changed, position_interacted = _render_single_position(an_cols[1], df, image_map, row_index, "AN(BOT)", cell_id)
+    changed = position_changed or changed
+    interacted = position_interacted or interacted
 
-    return changed
+    return changed, interacted
 
 
 def _render_single_position(
@@ -64,11 +73,12 @@ def _render_single_position(
     row_index: int,
     position: str,
     cell_id: str,
-) -> bool:
+) -> tuple[bool, bool]:
     """Render one position panel including image and defect buttons."""
     defect_col = POSITION_TO_DEFECT_COLUMN[position]
     atis_col = f"ATIS_{position}"
     changed = False
+    interacted = False
 
     with container:
         current_top = _get_atis_value(df, row_index, position)
@@ -84,11 +94,12 @@ def _render_single_position(
                 st.warning(f"이미지 표시 실패: {error}")
 
         current_sub = str(df.at[row_index, defect_col] or "").strip()
-        selected_top, selected_sub, selector_changed = render_defect_selector(
+        selected_top, selected_sub, selector_changed, selector_interacted = render_defect_selector(
             current_top=current_top,
             current_sub=current_sub,
             widget_key_prefix=f"defect_{cell_id}_{position}",
         )
+        interacted = interacted or selector_interacted
 
         if selector_changed:
             if selected_top != current_top:
@@ -97,7 +108,7 @@ def _render_single_position(
             df.at[row_index, defect_col] = selected_sub
             changed = True
 
-    return changed
+    return changed, interacted
 
 
 def _get_atis_value(df: pd.DataFrame, row_index: int, position: str) -> str:

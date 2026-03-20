@@ -121,9 +121,10 @@ def render_labeling_page() -> None:
         current_index=current_index,
     )
 
-    changed = render_image_grid(df=sorted_df, image_map=runtime_image_map, row_index=current_index)
-    if changed:
+    changed, interacted = render_image_grid(df=sorted_df, image_map=runtime_image_map, row_index=current_index)
+    if interacted:
         st.session_state["sidebar_force_sync"] = True
+    if changed:
         set_master_dataframe(sorted_df)
         touch_label_sync_token()
 
