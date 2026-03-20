@@ -15,7 +15,7 @@ def render_sidebar_cell_list(df: pd.DataFrame, current_cell_id: str) -> str:
     """
     st.sidebar.subheader("Cell List")
 
-    sorted_df = df.sort_values(COL_CELL_ID).reset_index(drop=True)
+    sorted_df = df.sort_values(COL_CELL_ID, ascending=False).reset_index(drop=True)
     options = [str(value) for value in sorted_df[COL_CELL_ID].tolist()]
     if not options:
         return ""

@@ -106,6 +106,7 @@ def render_labeling_page() -> None:
     if selected_cell_id and selected_cell_id != current_cell_id:
         index_map = {str(cell_id): idx for idx, cell_id in enumerate(sorted_df[COL_CELL_ID].tolist())}
         selected_index = index_map.get(selected_cell_id, current_index)
+        st.session_state["sidebar_cell_id"] = selected_cell_id
         set_selected_cell_id(selected_cell_id)
         set_current_cell_index(selected_index)
         current_index = selected_index
